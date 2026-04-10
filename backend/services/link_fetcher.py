@@ -321,15 +321,10 @@ async def fetch_product_data(url: str) -> dict:
         "fetch_source":   "scrape",
     }
 
-    # ① حاول PA API أولاً إذا كان رابط أمازون
+    # ① استخرج ASIN إن وُجد (للحفظ فقط، لا PA API)
     asin = extract_asin(url)
     if asin:
         data["amazon_asin"] = asin
-        pa_result = await _fetch_via_paapi(asin)
-        if pa_result:
-            data.update(pa_result)
-            data["fetch_source"] = "paapi"
-            return data
 
     # ② اجلب HTML الصفحة
     html = await _fetch_html(url)
