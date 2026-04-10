@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# بيئة التطوير
+.env
+.venv
+venv/
+env/
+
+# قاعدة البيانات (لا ترفعها على Git)
+database/*.db
+database/*.db-shm
+database/*.db-wal
+
+# ملفات النظام
+.DS_Store
+Thumbs.db
+*.log
+
+# مفاتيح وأسرار
+*.pem
+*.key
