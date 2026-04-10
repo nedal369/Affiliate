@@ -25,13 +25,23 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 
 # ── Startup / Shutdown ────────────────────────────────────────────────────────────
+async def _ensure_default_admin():
+    """إنشاء حساب admin في الخلفية لتجنب blocking الـ event loop أثناء الـ startup"""
+    try:
+        from backend.config import create_default_admin
+        await asyncio.to_thread(create_default_admin)
+    except Exception as e:
+        logger.error(f"خطأ في إنشاء حساب Admin: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from backend.config import init_db
     from backend.scheduler import setup_scheduler
-    init_db()
+    init_db()          # سريع: إنشاء الجداول والإعدادات فقط، بدون bcrypt
     setup_scheduler()
     logger.info("✅ النظام جاهز")
+    asyncio.create_task(_ensure_default_admin())  # bcrypt في الخلفية بعد bind المنفذ
     yield
     from backend.scheduler import stop_scheduler
     stop_scheduler()
