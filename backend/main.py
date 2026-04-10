@@ -472,13 +472,16 @@ KNOWN_SERVICES = [
 
 @app.get("/api/keys")
 async def get_keys():
-    from backend.config import get_masked_key, get_api_key
+    from backend.config import get_masked_key, get_api_key, is_key_from_env, ENV_VAR_MAP
     result = {}
     for service in KNOWN_SERVICES:
         raw = get_api_key(service)
+        from_env = is_key_from_env(service)
         result[service] = {
-            "masked": get_masked_key(service),
-            "has_key": bool(raw),
+            "masked":    get_masked_key(service),
+            "has_key":   bool(raw),
+            "from_env":  from_env,
+            "env_var":   ENV_VAR_MAP.get(service, ""),
         }
     return result
 

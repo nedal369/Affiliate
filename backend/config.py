@@ -115,8 +115,39 @@ def get_all_settings() -> dict:
         return result
 
 
+# ── خريطة متغيرات البيئة لكل خدمة ───────────────────────────────────────────────
+# المفاتيح المضبوطة كـ env vars تبقى ثابتة عبر جميع التحديثات على Render
+ENV_VAR_MAP: dict[str, str] = {
+    "anthropic":            "ANTHROPIC_API_KEY",
+    "openai":               "OPENAI_API_KEY",
+    "google":               "GOOGLE_API_KEY",
+    "groq":                 "GROQ_API_KEY",
+    "amazon_access_key":    "AMAZON_ACCESS_KEY",
+    "amazon_secret_key":    "AMAZON_SECRET_KEY",
+    "amazon_associate_tag": "AMAZON_ASSOCIATE_TAG",
+    "apify":                "APIFY_API_KEY",
+    "telegram_token":       "TELEGRAM_BOT_TOKEN",
+    "telegram_channel_id":  "TELEGRAM_CHANNEL_ID",
+    "ultramsg_instance":    "ULTRAMSG_INSTANCE",
+    "ultramsg_token":       "ULTRAMSG_TOKEN",
+    "whatsapp_number":      "WHATSAPP_NUMBER",
+    "x_api_key":            "X_API_KEY",
+    "x_api_secret":         "X_API_SECRET",
+    "x_access_token":       "X_ACCESS_TOKEN",
+    "x_access_secret":      "X_ACCESS_SECRET",
+}
+
+
 # ── دوال مفاتيح API ───────────────────────────────────────────────────────────
 def get_api_key(service: str) -> Optional[str]:
+    # ① تحقق من env var أولاً — تبقى ثابتة عبر التحديثات على Render
+    env_var = ENV_VAR_MAP.get(service)
+    if env_var:
+        env_val = os.getenv(env_var, "").strip()
+        if env_val:
+            return env_val
+
+    # ② ارجع للقاعدة (للمفاتيح المدخلة يدوياً عبر الواجهة)
     with SessionLocal() as db:
         row = db.get(ApiKey, service)
         if row is None or not row.encrypted_key:
@@ -126,6 +157,12 @@ def get_api_key(service: str) -> Optional[str]:
         except Exception:
             logger.error(f"فشل فك تشفير مفتاح {service}")
             return None
+
+
+def is_key_from_env(service: str) -> bool:
+    """هل المفتاح مصدره متغير البيئة؟"""
+    env_var = ENV_VAR_MAP.get(service)
+    return bool(env_var and os.getenv(env_var, "").strip())
 
 
 def set_api_key(service: str, key: str):

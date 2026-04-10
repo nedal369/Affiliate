@@ -6,12 +6,61 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: ENCRYPTION_KEY
-        generateValue: true
-      - key: ENVIRONMENT
-        value: production
-      - key: PYTHON_VERSION
-        value: "3.11.0"
     healthCheckPath: /api/health
     autoDeploy: true
+
+    envVars:
+      # ── مطلوب دائماً ────────────────────────────────────────────────────────
+      - key: ENCRYPTION_KEY
+        generateValue: true          # يُولَّد تلقائياً عند أول نشر
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: ENVIRONMENT
+        value: production
+
+      # ── مفاتيح الذكاء الاصطناعي (اختياري — أضف ما تحتاجه) ─────────────────
+      # يكفي مفتاح واحد على الأقل لتوليد المحتوى
+      - key: ANTHROPIC_API_KEY
+        sync: false                  # اضبطه يدوياً في Render Dashboard
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false                  # مجاني — الأسرع للبداية
+
+      # ── Amazon Associates (اختياري) ─────────────────────────────────────────
+      - key: AMAZON_ACCESS_KEY
+        sync: false
+      - key: AMAZON_SECRET_KEY
+        sync: false
+      - key: AMAZON_ASSOCIATE_TAG
+        sync: false                  # مثال: yourname-sa-21
+
+      # ── مصادر المنتجات (اختياري) ────────────────────────────────────────────
+      - key: APIFY_API_KEY
+        sync: false
+
+      # ── Telegram (اختياري) ──────────────────────────────────────────────────
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHANNEL_ID
+        sync: false                  # مثال: @mychannel أو -100123456789
+
+      # ── WhatsApp / UltraMsg (اختياري) ───────────────────────────────────────
+      - key: ULTRAMSG_INSTANCE
+        sync: false
+      - key: ULTRAMSG_TOKEN
+        sync: false
+      - key: WHATSAPP_NUMBER
+        sync: false                  # مثال: +966501234567
+
+      # ── منصة X / Twitter (اختياري) ──────────────────────────────────────────
+      - key: X_API_KEY
+        sync: false
+      - key: X_API_SECRET
+        sync: false
+      - key: X_ACCESS_TOKEN
+        sync: false
+      - key: X_ACCESS_SECRET
+        sync: false

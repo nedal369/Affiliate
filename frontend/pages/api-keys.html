@@ -2,11 +2,21 @@
 <div class="page-header">
   <div>
     <h2 class="page-title">🔑 مفاتيح API</h2>
-    <p class="page-subtitle">جميع المفاتيح مشفّرة في قاعدة البيانات — لا تُحفظ في ملفات</p>
+    <p class="page-subtitle">المفاتيح المحفوظة في متغيرات البيئة تبقى ثابتة عبر جميع التحديثات</p>
   </div>
 </div>
 
 <div style="max-width: 720px;">
+
+  <!-- ── بانر التوضيح ── -->
+  <div style="background:rgba(0,113,227,0.06);border:1px solid rgba(0,113,227,0.2);border-radius:var(--radius-md);padding:16px 20px;margin-bottom:24px;">
+    <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--accent);">🛡️ كيف تحفظ مفاتيحك بشكل دائم؟</div>
+    <p style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin:0;">
+      قاعدة البيانات تُمسح عند كل تحديث على Render (الخطة المجانية).<br>
+      لحفظ المفاتيح <strong>بشكل دائم</strong>: اذهب إلى <strong>Render → Environment</strong> وأضف المفاتيح كـ Environment Variables باستخدام الأسماء الموضحة أسفل كل حقل.
+      <br><span style="color:var(--success);font-weight:600;">✓ المفاتيح المضبوطة هناك تظهر بشارة خضراء ولا تُمسح أبداً.</span>
+    </p>
+  </div>
 
   <!-- ══ Anthropic ══ -->
   <div class="card mb-4" id="card-anthropic">
@@ -30,8 +40,9 @@
               style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
               id="eye-anthropic">👁</button>
           </div>
-          <button class="btn btn-primary" onclick="saveKey('anthropic', 'key-anthropic')">حفظ</button>
+          <button class="btn btn-primary" data-save="anthropic" onclick="saveKey('anthropic', 'key-anthropic')">حفظ</button>
         </div>
+        <div id="env-hint-anthropic" class="env-hint">ANTHROPIC_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('anthropic')">🔌 اختبار الاتصال</button>
     </div>
@@ -59,8 +70,9 @@
               style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
               id="eye-openai">👁</button>
           </div>
-          <button class="btn btn-primary" onclick="saveKey('openai', 'key-openai')">حفظ</button>
+          <button class="btn btn-primary" data-save="openai" onclick="saveKey('openai', 'key-openai')">حفظ</button>
         </div>
+        <div id="env-hint-openai" class="env-hint">OPENAI_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('openai')">🔌 اختبار الاتصال</button>
     </div>
@@ -88,8 +100,9 @@
               style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
               id="eye-google">👁</button>
           </div>
-          <button class="btn btn-primary" onclick="saveKey('google', 'key-google')">حفظ</button>
+          <button class="btn btn-primary" data-save="google" onclick="saveKey('google', 'key-google')">حفظ</button>
         </div>
+        <div id="env-hint-google" class="env-hint">GOOGLE_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('google')">🔌 اختبار الاتصال</button>
     </div>
@@ -117,8 +130,9 @@
               style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
               id="eye-groq">👁</button>
           </div>
-          <button class="btn btn-primary" onclick="saveKey('groq', 'key-groq')">حفظ</button>
+          <button class="btn btn-primary" data-save="groq" onclick="saveKey('groq', 'key-groq')">حفظ</button>
         </div>
+        <div id="env-hint-groq" class="env-hint">GROQ_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('groq')">🔌 اختبار الاتصال</button>
     </div>
@@ -139,14 +153,13 @@
     <div class="card-body">
       <div class="form-group">
         <label class="form-label">Access Key</label>
-        <div class="flex gap-2">
-          <div style="position: relative; flex: 1;">
-            <input type="password" class="form-control" id="key-amazon_access_key" placeholder="AKIA..." />
-            <button onclick="toggleVisibility('key-amazon_access_key', 'eye-amazon_access_key')"
-              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
-              id="eye-amazon_access_key">👁</button>
-          </div>
+        <div style="position: relative;">
+          <input type="password" class="form-control" id="key-amazon_access_key" placeholder="AKIA..." />
+          <button onclick="toggleVisibility('key-amazon_access_key', 'eye-amazon_access_key')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+            id="eye-amazon_access_key">👁</button>
         </div>
+        <div id="env-hint-amazon_access_key" class="env-hint">AMAZON_ACCESS_KEY</div>
       </div>
       <div class="form-group">
         <label class="form-label">Secret Key</label>
@@ -156,10 +169,12 @@
             style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
             id="eye-amazon_secret_key">👁</button>
         </div>
+        <div id="env-hint-amazon_secret_key" class="env-hint">AMAZON_SECRET_KEY</div>
       </div>
       <div class="form-group">
         <label class="form-label">Associate Tag</label>
         <input type="text" class="form-control" id="key-amazon_associate_tag" placeholder="yourname-sa-21" />
+        <div id="env-hint-amazon_associate_tag" class="env-hint">AMAZON_ASSOCIATE_TAG</div>
       </div>
       <div class="form-group">
         <label class="form-label">السوق</label>
@@ -198,8 +213,9 @@
               style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
               id="eye-apify">👁</button>
           </div>
-          <button class="btn btn-primary" onclick="saveKey('apify', 'key-apify')">حفظ</button>
+          <button class="btn btn-primary" data-save="apify" onclick="saveKey('apify', 'key-apify')">حفظ</button>
         </div>
+        <div id="env-hint-apify" class="env-hint">APIFY_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('apify')">🔌 اختبار الاتصال</button>
     </div>
@@ -226,10 +242,12 @@
             style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
             id="eye-telegram_token">👁</button>
         </div>
+        <div id="env-hint-telegram_token" class="env-hint">TELEGRAM_BOT_TOKEN</div>
       </div>
       <div class="form-group">
         <label class="form-label">Channel ID</label>
         <input type="text" class="form-control" id="key-telegram_channel_id" placeholder="@channel_name أو -100123456789" />
+        <div id="env-hint-telegram_channel_id" class="env-hint">TELEGRAM_CHANNEL_ID</div>
       </div>
       <div class="flex gap-2">
         <button class="btn btn-primary" onclick="saveTelegramKeys()">حفظ</button>
@@ -254,6 +272,7 @@
       <div class="form-group">
         <label class="form-label">Instance ID</label>
         <input type="text" class="form-control" id="key-ultramsg_instance" placeholder="instance12345" />
+        <div id="env-hint-ultramsg_instance" class="env-hint">ULTRAMSG_INSTANCE</div>
       </div>
       <div class="form-group">
         <label class="form-label">Token</label>
@@ -263,10 +282,12 @@
             style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
             id="eye-ultramsg_token">👁</button>
         </div>
+        <div id="env-hint-ultramsg_token" class="env-hint">ULTRAMSG_TOKEN</div>
       </div>
       <div class="form-group">
         <label class="form-label">رقم WhatsApp (مع كود الدولة)</label>
         <input type="text" class="form-control" id="key-whatsapp_number" placeholder="+966501234567" />
+        <div id="env-hint-whatsapp_number" class="env-hint">WHATSAPP_NUMBER</div>
       </div>
       <div class="flex gap-2">
         <button class="btn btn-primary" onclick="saveWhatsAppKeys()">حفظ</button>
@@ -292,18 +313,22 @@
         <div class="form-group">
           <label class="form-label">API Key</label>
           <input type="password" class="form-control" id="key-x_api_key" placeholder="••••••••••••" />
+          <div id="env-hint-x_api_key" class="env-hint">X_API_KEY</div>
         </div>
         <div class="form-group">
           <label class="form-label">API Secret</label>
           <input type="password" class="form-control" id="key-x_api_secret" placeholder="••••••••••••" />
+          <div id="env-hint-x_api_secret" class="env-hint">X_API_SECRET</div>
         </div>
         <div class="form-group">
           <label class="form-label">Access Token</label>
           <input type="password" class="form-control" id="key-x_access_token" placeholder="••••••••••••" />
+          <div id="env-hint-x_access_token" class="env-hint">X_ACCESS_TOKEN</div>
         </div>
         <div class="form-group">
           <label class="form-label">Access Secret</label>
           <input type="password" class="form-control" id="key-x_access_secret" placeholder="••••••••••••" />
+          <div id="env-hint-x_access_secret" class="env-hint">X_ACCESS_SECRET</div>
         </div>
       </div>
       <div class="flex gap-2">
@@ -313,17 +338,32 @@
     </div>
   </div>
 
-  <!-- تحذير -->
+  <!-- ملاحظات الأمان -->
   <div class="card" style="background: rgba(255,149,0,0.06); border-color: rgba(255,149,0,0.2);">
     <div class="card-body">
       <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.8;">
-        ⚠️ جميع المفاتيح مشفّرة بـ Fernet في قاعدة البيانات<br>
-        ⚠️ لا تُرسَل المفاتيح كاملة للواجهة — يُعرض فقط آخر 4 أرقام<br>
-        ⚠️ احتفظ بنسخة احتياطية من مفاتيحك في مكان آمن
+        🔒 المفاتيح المدخلة عبر الواجهة تُشفَّر بـ Fernet في قاعدة البيانات<br>
+        🔒 لا تُرسَل المفاتيح كاملة للواجهة — يُعرض فقط مسوّدة مشفّرة<br>
+        🛡️ المفاتيح في Environment Variables أكثر أماناً وأماناً من قاعدة البيانات
       </p>
     </div>
   </div>
 </div>
+
+<style>
+.mb-4 { margin-bottom: 16px; }
+.env-hint {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-tertiary);
+  margin-top: 5px;
+  padding: 2px 6px;
+  background: var(--surface);
+  border-radius: 4px;
+  display: inline-block;
+  letter-spacing: 0.03em;
+}
+</style>
 
 <script>
 // ── تحميل المفاتيح المحفوظة ─────────────────────────────────────────────────
@@ -344,17 +384,49 @@ async function loadKeys() {
     };
 
     for (const [service, info] of Object.entries(data)) {
-      const el = document.getElementById(statusMap[service]);
-      if (!el) continue;
-      if (info.has_key) {
-        el.className = 'badge badge-success';
-        el.textContent = '● متصل';
-        // عرض القيمة المخفية في الـ input
-        const input = document.getElementById(`key-${service}`);
-        if (input && info.masked) input.placeholder = info.masked;
-      } else {
-        el.className = 'badge badge-neutral';
-        el.textContent = '○ غير متصل';
+      // ── شارة الحالة ──
+      const statusEl = document.getElementById(statusMap[service]);
+      if (statusEl) {
+        if (info.from_env) {
+          statusEl.className = 'badge badge-success';
+          statusEl.innerHTML = '🛡️ من متغيرات البيئة';
+          statusEl.title = `متغير البيئة: ${info.env_var}`;
+        } else if (info.has_key) {
+          statusEl.className = 'badge badge-info';
+          statusEl.textContent = '● محفوظ في قاعدة البيانات';
+        } else {
+          statusEl.className = 'badge badge-neutral';
+          statusEl.textContent = '○ غير مضبوط';
+        }
+      }
+
+      // ── حقل الإدخال ──
+      const input = document.getElementById(`key-${service}`);
+      if (input) {
+        if (info.from_env) {
+          // المفتاح من env var — اعرض مسوّدة واجعل الحقل للقراءة
+          input.placeholder = info.masked || '••••••••';
+          input.disabled = true;
+          input.style.opacity = '0.6';
+          input.title = `محفوظ كـ ${info.env_var} في متغيرات البيئة`;
+        } else if (info.has_key) {
+          input.placeholder = info.masked || '••••••••';
+        }
+      }
+
+      // ── تعطيل زر الحفظ للمفاتيح من env var ──
+      // نضيف data-service للأزرار ليمكن تحديدها
+      const saveBtn = document.querySelector(`button[data-save="${service}"]`);
+      if (saveBtn && info.from_env) {
+        saveBtn.disabled = true;
+        saveBtn.title = 'المفتاح محفوظ في متغيرات البيئة — لا يحتاج حفظاً';
+      }
+
+      // ── hint متغير البيئة ──
+      const hintEl = document.getElementById(`env-hint-${service}`);
+      if (hintEl) {
+        hintEl.textContent = info.env_var ? `متغير البيئة: ${info.env_var}` : '';
+        hintEl.style.display = 'block';
       }
     }
 
