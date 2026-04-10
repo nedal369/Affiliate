@@ -92,47 +92,28 @@ def _search_amazon_sync(
     associate_tag: str,
     marketplace: str,
 ) -> Optional[dict]:
-    """استدعاء متزامن لـ Amazon PA API"""
+    """استدعاء متزامن لـ Amazon PA API عبر python-amazon-paapi"""
     try:
-        from paapi5_python_sdk.api.default_api import DefaultApi
-        from paapi5_python_sdk.models.search_items_request import SearchItemsRequest
-        from paapi5_python_sdk.models.search_items_resource import SearchItemsResource
-        from paapi5_python_sdk.models.partner_type import PartnerType
-        import paapi5_python_sdk as paapi5
+        from amazon_paapi import AmazonApi
 
-        country_map = {"SA": "Saudi Arabia", "AE": "United Arab Emirates"}
-        host_map = {"SA": "webservices.amazon.sa", "AE": "webservices.amazon.ae"}
-        region_map = {"SA": "eu-west-1", "AE": "eu-west-1"}
-
-        default_api = DefaultApi(
-            access_key=access_key,
-            secret_key=secret_key,
-            host=host_map.get(marketplace, "webservices.amazon.sa"),
-            region=region_map.get(marketplace, "eu-west-1"),
+        amz = AmazonApi(
+            access_key,
+            secret_key,
+            associate_tag,
+            marketplace,          # "SA" | "AE" | "US" …
+            throttling=0.9,
         )
 
-        resources = [
-            SearchItemsResource.ITEMINFO_TITLE,
-            SearchItemsResource.OFFERS_LISTINGS_PRICE,
-            SearchItemsResource.IMAGES_PRIMARY_LARGE,
-            SearchItemsResource.CUSTOMERREVIEWS_STARRATING,
-            SearchItemsResource.CUSTOMERREVIEWS_COUNT,
-        ]
-
-        request = SearchItemsRequest(
-            partner_tag=associate_tag,
-            partner_type=PartnerType.ASSOCIATES,
+        response = amz.search_items(
             keywords=query,
             search_index="All",
             item_count=10,
-            resources=resources,
         )
 
-        response = default_api.search_items(request)
-        if not response.search_result or not response.search_result.items:
+        if not response or not response.items_result or not response.items_result.items:
             return None
 
-        for item in response.search_result.items:
+        for item in response.items_result.items:
             product = _parse_amazon_item(item, associate_tag, marketplace)
             if product:
                 return product
@@ -140,8 +121,8 @@ def _search_amazon_sync(
         return None
 
     except ImportError:
-        logger.warning("paapi5_python_sdk غير مثبتة — استخدام requests مباشرة")
-        return _search_amazon_requests(query, access_key, secret_key, associate_tag, marketplace)
+        logger.warning("amazon_paapi غير مثبتة")
+        return None
     except Exception as exc:
         logger.error(f"خطأ في استدعاء PA API: {exc}")
         return None
@@ -208,13 +189,6 @@ def _parse_amazon_item(item, associate_tag: str, marketplace: str) -> Optional[d
         logger.error(f"خطأ في تحليل بيانات المنتج: {exc}")
         return None
 
-
-def _search_amazon_requests(
-    query: str, access_key: str, secret_key: str, associate_tag: str, marketplace: str
-) -> Optional[dict]:
-    """بديل باستخدام requests مع HMAC signing يدوي"""
-    logger.warning("استخدام requests كبديل لـ PA API — غير مكتمل في هذا الإصدار")
-    return None
 
 
 def _mock_product(query: str, associate_tag: str, marketplace: str) -> dict:
