@@ -14,57 +14,38 @@
 
 <!-- ── مودال إضافة رابط يدوي ──────────────────────────────────────────────── -->
 <div id="manual-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;">
-  <div style="background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:90%;max-width:560px;max-height:90vh;overflow-y:auto;animation:modal-in 0.25s ease;">
+  <div style="background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:90%;max-width:520px;animation:modal-in 0.25s ease;">
     <div class="modal-header">
-      <h3 class="modal-title">➕ إضافة رابط إحالة يدوي</h3>
+      <h3 class="modal-title">🔗 إضافة رابط إحالة</h3>
       <button class="modal-close" onclick="closeManualModal()">✕</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6;">
-        أضف رابط الإحالة وسيقوم النظام بتوليد محتوى تسويقي عربي احترافي تلقائياً.
-        يمكنك نسخه أو نشره مباشرة.
-      </p>
 
-      <!-- رابط الإحالة -->
-      <div class="form-group">
-        <label class="form-label">🔗 رابط الإحالة <span style="color:var(--danger)">*</span></label>
-        <input class="form-control" type="url" id="ml-url" placeholder="https://www.amazon.sa/dp/...?tag=..." />
+      <!-- شرح مختصر -->
+      <div style="background:rgba(0,113,227,0.06);border:1px solid rgba(0,113,227,0.15);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:20px;font-size:13px;color:var(--text-secondary);line-height:1.6;">
+        📋 الصق رابط الإحالة وسيقوم النظام تلقائياً بجلب اسم المنتج والسعر والصورة ثم توليد محتوى تسويقي عربي.
       </div>
 
-      <!-- اسم المنتج -->
-      <div class="form-group">
-        <label class="form-label">📦 اسم المنتج (اختياري)</label>
-        <input class="form-control" type="text" id="ml-title" placeholder="مثال: سماعات سوني اللاسلكية WH-1000XM5" />
-        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">كلما أضفت تفاصيل أكثر، كان المحتوى أفضل</div>
-      </div>
-
-      <!-- الأسعار في صف -->
-      <div class="grid-2" style="gap:12px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">💰 السعر الحالي (ريال)</label>
-          <input class="form-control" type="number" id="ml-price-current" placeholder="849" min="0" step="0.01" oninput="calcDiscount()" />
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">🏷️ السعر الأصلي (ريال)</label>
-          <input class="form-control" type="number" id="ml-price-original" placeholder="1299" min="0" step="0.01" oninput="calcDiscount()" />
-        </div>
-      </div>
-      <div id="ml-discount-preview" style="display:none;margin:8px 0 16px;font-size:12px;font-weight:600;color:var(--success);">
-        🎉 نسبة الخصم المحسوبة: <span id="ml-discount-val">0</span>%
-      </div>
-
-      <!-- رابط الصورة -->
-      <div class="form-group">
-        <label class="form-label">🖼️ رابط صورة المنتج (اختياري)</label>
-        <input class="form-control" type="url" id="ml-image" placeholder="https://..." />
+      <!-- حقل الرابط فقط -->
+      <div class="form-group" style="margin-bottom:20px;">
+        <label class="form-label" style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">رابط الإحالة</label>
+        <input
+          class="form-control"
+          type="url"
+          id="ml-url"
+          placeholder="https://www.amazon.sa/dp/B0XXXXXXXXXX?tag=mytag-21"
+          style="font-size:14px;padding:12px 14px;"
+          onkeydown="if(event.key==='Enter') submitManualLink()"
+        />
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">يدعم روابط أمازون السعودية والإمارات وغيرها</div>
       </div>
 
       <!-- نشر تلقائي -->
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px 16px;margin-top:4px;">
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 16px;">
         <div class="toggle-row" style="padding:0;">
           <div>
-            <div class="toggle-label">⚡ نشر تلقائي فور التوليد</div>
-            <div class="toggle-desc">سيُنشر على جميع القنوات المفعّلة مباشرةً دون مراجعة</div>
+            <div class="toggle-label" style="font-size:13px;">⚡ نشر تلقائي فور التوليد</div>
+            <div class="toggle-desc">ينشر مباشرةً دون مراجعة</div>
           </div>
           <label class="toggle" style="margin-right:8px;">
             <input type="checkbox" id="ml-auto-publish" />
@@ -72,11 +53,12 @@
           </label>
         </div>
       </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeManualModal()">إلغاء</button>
-      <button class="btn btn-primary" id="ml-submit-btn" onclick="submitManualLink()">
-        ✨ توليد المحتوى
+      <button class="btn btn-primary" id="ml-submit-btn" onclick="submitManualLink()" style="min-width:160px;">
+        ✨ جلب البيانات وتوليد المحتوى
       </button>
     </div>
   </div>
@@ -373,82 +355,69 @@ loadQueue();
 // ════════════════════════════════════════════════════════════════════════════
 
 function openManualLinkModal() {
-  // إعادة تعيين الحقول
-  ['ml-url', 'ml-title', 'ml-price-current', 'ml-price-original', 'ml-image'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
+  document.getElementById('ml-url').value = '';
+  document.getElementById('ml-url').style.borderColor = '';
   document.getElementById('ml-auto-publish').checked = false;
-  document.getElementById('ml-discount-preview').style.display = 'none';
   const btn = document.getElementById('ml-submit-btn');
   btn.disabled = false;
-  btn.innerHTML = '✨ توليد المحتوى';
+  btn.innerHTML = '✨ جلب البيانات وتوليد المحتوى';
 
-  const overlay = document.getElementById('manual-modal-overlay');
-  overlay.style.display = 'flex';
-  setTimeout(() => document.getElementById('ml-url').focus(), 100);
+  document.getElementById('manual-modal-overlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('ml-url').focus(), 120);
 }
 
 function closeManualModal() {
   document.getElementById('manual-modal-overlay').style.display = 'none';
 }
 
-function calcDiscount() {
-  const curr = parseFloat(document.getElementById('ml-price-current').value);
-  const orig = parseFloat(document.getElementById('ml-price-original').value);
-  const preview = document.getElementById('ml-discount-preview');
-
-  if (curr > 0 && orig > curr) {
-    const pct = Math.round((1 - curr / orig) * 100);
-    document.getElementById('ml-discount-val').textContent = pct;
-    preview.style.display = 'block';
-  } else {
-    preview.style.display = 'none';
-  }
-}
+const _spinnerHtml = '<span style="display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;"></span>';
 
 async function submitManualLink() {
-  const url = document.getElementById('ml-url').value.trim();
+  const urlEl = document.getElementById('ml-url');
+  const url = urlEl.value.trim();
+
   if (!url) {
-    document.getElementById('ml-url').focus();
-    document.getElementById('ml-url').style.borderColor = 'var(--danger)';
+    urlEl.focus();
+    urlEl.style.borderColor = 'var(--danger)';
+    urlEl.style.boxShadow = '0 0 0 3px rgba(255,59,48,0.15)';
     return;
   }
-  document.getElementById('ml-url').style.borderColor = '';
+  urlEl.style.borderColor = '';
+  urlEl.style.boxShadow = '';
 
   const btn = document.getElementById('ml-submit-btn');
-  btn.disabled = true;
-  btn.innerHTML = 'جاري التوليد <span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:4px;"></span>';
+  const autoPublish = document.getElementById('ml-auto-publish').checked;
 
-  const payload = {
-    affiliate_url:  url,
-    title:          document.getElementById('ml-title').value.trim() || null,
-    price_current:  parseFloat(document.getElementById('ml-price-current').value) || null,
-    price_original: parseFloat(document.getElementById('ml-price-original').value) || null,
-    image_url:      document.getElementById('ml-image').value.trim() || null,
-    auto_publish:   document.getElementById('ml-auto-publish').checked,
-  };
+  btn.disabled = true;
+  btn.innerHTML = _spinnerHtml + 'جاري جلب بيانات المنتج...';
 
   try {
     const resp = await fetch('/api/manual-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ url, auto_publish: autoPublish }),
     });
+
+    // تحديث النص أثناء الانتظار (يُبدّل بعد 3 ث)
+    const msgTimer = setTimeout(() => {
+      if (btn.disabled) btn.innerHTML = _spinnerHtml + 'جاري توليد المحتوى...';
+    }, 3000);
+
     const data = await resp.json();
+    clearTimeout(msgTimer);
 
     if (!resp.ok || !data.success) {
-      throw new Error(data.detail || 'حدث خطأ');
+      throw new Error(data.detail || 'حدث خطأ أثناء المعالجة');
     }
 
     closeManualModal();
-    showResultModal(data.product, payload.auto_publish);
+    showResultModal(data.product, autoPublish);
     await loadQueue();
 
   } catch (err) {
     showToast('خطأ: ' + err.message, 'error');
     btn.disabled = false;
-    btn.innerHTML = '✨ توليد المحتوى';
+    btn.innerHTML = '✨ جلب البيانات وتوليد المحتوى';
   }
 }
 
@@ -457,15 +426,27 @@ function showResultModal(product, autoPublished) {
   const infoEl = document.getElementById('result-product-info');
   const priceInfo = product.price_current > 0
     ? `<span style="font-weight:700;">${product.price_current.toFixed(2)} ريال</span>`
-      + (product.price_original > product.price_current ? ` <span style="text-decoration:line-through;color:var(--text-tertiary);">${product.price_original.toFixed(2)}</span>` : '')
-      + (product.discount_pct > 0 ? ` <span style="background:rgba(52,199,89,0.12);color:var(--success);font-size:11px;font-weight:700;padding:1px 7px;border-radius:12px;">خصم ${product.discount_pct}%</span>` : '')
-    : '<span style="color:var(--text-tertiary);">—</span>';
+      + (product.price_original > product.price_current ? ` <span style="text-decoration:line-through;color:var(--text-tertiary);font-size:12px;">${product.price_original.toFixed(2)}</span>` : '')
+      + (product.discount_pct > 0 ? ` <span style="background:rgba(52,199,89,0.12);color:var(--success);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;">خصم ${product.discount_pct}%</span>` : '')
+    : '';
+
+  const sourceLabel = product.fetch_source === 'paapi'
+    ? '<span style="background:rgba(0,113,227,0.08);color:var(--accent);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">✓ Amazon PA API</span>'
+    : '<span style="background:rgba(255,149,0,0.08);color:var(--warning);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">↓ جلب من الصفحة</span>';
 
   infoEl.innerHTML = `
-    <div style="font-weight:600;margin-bottom:4px;">${product.title_ar || product.title}</div>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px;">
-      ${priceInfo}
-      <a href="${product.affiliate_url}" target="_blank" style="color:var(--accent);font-size:12px;">🔗 فتح الرابط</a>
+    <div style="display:flex;gap:12px;align-items:flex-start;">
+      ${product.image_url
+        ? `<img src="${product.image_url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">`
+        : ''}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px;line-height:1.4;">${product.title_ar || product.title}</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          ${priceInfo}
+          ${sourceLabel}
+          <a href="${product.affiliate_url}" target="_blank" style="color:var(--accent);font-size:12px;margin-right:auto;">🔗 فتح الرابط</a>
+        </div>
+      </div>
     </div>`;
 
   // المحتوى

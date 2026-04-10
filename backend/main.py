@@ -582,14 +582,9 @@ async def test_key(service: str):
     return {"success": False, "message": f"اختبار {service} غير مدعوم"}
 
 
-# ── إضافة رابط إحالة يدوي ─────────────────────────────────────────────────────────
+# ── إضافة رابط إحالة يدوي (جلب تلقائي للبيانات) ────────────────────────────────
 class ManualLinkBody(BaseModel):
-    affiliate_url: str
-    title: Optional[str] = None
-    title_ar: Optional[str] = None
-    price_current: Optional[float] = None
-    price_original: Optional[float] = None
-    image_url: Optional[str] = None
+    url: str
     auto_publish: bool = False
 
 
@@ -598,45 +593,44 @@ async def add_manual_link(body: ManualLinkBody):
     from backend.config import SessionLocal
     from backend.models import Product
     from backend.services.ai_service import generate_content
+    from backend.services.link_fetcher import fetch_product_data
 
-    url = body.affiliate_url.strip()
+    url = body.url.strip()
     if not url:
-        raise HTTPException(400, "رابط الإحالة مطلوب")
+        raise HTTPException(400, "الرابط مطلوب")
 
-    # حساب نسبة الخصم
-    discount_pct = 0
-    price_orig = body.price_original or 0.0
-    price_curr = body.price_current or 0.0
-    if price_orig > 0 and price_curr > 0 and price_orig > price_curr:
-        discount_pct = round((1 - price_curr / price_orig) * 100)
+    # ① جلب بيانات المنتج تلقائياً
+    fetched = await fetch_product_data(url)
 
-    title = (body.title or "منتج من رابط إحالة").strip()
-    title_ar = (body.title_ar or title).strip()
+    title = fetched.get("title") or "منتج من رابط إحالة"
 
     product_data = {
-        "title": title,
-        "price_original": price_orig,
-        "price_current": price_curr,
-        "discount_pct": discount_pct,
-        "rating": 0.0,
-        "rating_count": 0,
-        "affiliate_url": url,
+        "title":          title,
+        "price_original": fetched.get("price_original") or 0.0,
+        "price_current":  fetched.get("price_current")  or 0.0,
+        "discount_pct":   fetched.get("discount_pct")   or 0,
+        "rating":         fetched.get("rating")          or 0.0,
+        "rating_count":   fetched.get("rating_count")    or 0,
+        "affiliate_url":  url,
     }
 
-    # توليد المحتوى بالذكاء الاصطناعي
+    # ② توليد المحتوى
     ai_content, model_used = await generate_content(product_data)
 
-    # حفظ المنتج
+    # ③ حفظ في قاعدة البيانات
     with SessionLocal() as db:
         product = Product(
             title=title,
-            title_ar=title_ar,
+            title_ar=title,
             source="manual",
+            amazon_asin=fetched.get("amazon_asin"),
             affiliate_url=url,
-            price_current=price_curr,
-            price_original=price_orig,
-            discount_pct=discount_pct,
-            image_url=body.image_url.strip() if body.image_url else None,
+            price_current=product_data["price_current"],
+            price_original=product_data["price_original"],
+            discount_pct=product_data["discount_pct"],
+            rating=product_data["rating"],
+            rating_count=product_data["rating_count"],
+            image_url=fetched.get("image_url"),
             ai_content=ai_content,
             ai_model_used=model_used,
             status="pending",
@@ -647,6 +641,9 @@ async def add_manual_link(body: ManualLinkBody):
         product_id = product.id
         result = _product_to_dict(product)
 
+    result["fetch_source"] = fetched.get("fetch_source", "scrape")
+
+    # ④ نشر تلقائي إذا طُلب
     if body.auto_publish:
         from backend.services.publisher import publish_product
         pub_result = await publish_product(product_id)
