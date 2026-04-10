@@ -160,6 +160,7 @@
       cursor: pointer;
       transition: all 0.15s;
       font-family: var(--font);
+      margin-bottom: 4px;
     }
     .btn-toggle:hover { background: var(--text-primary); color: #fff; border-color: var(--text-primary); }
 
@@ -500,14 +501,28 @@
       <a class="nav-item" data-page="analytics" href="#">
         <span class="nav-icon">📈</span> التحليلات
       </a>
+      <!-- يظهر فقط للمديرين -->
+      <a class="nav-item hidden" data-page="admin" href="#" id="nav-admin">
+        <span class="nav-icon">👥</span> المستخدمون
+      </a>
     </nav>
 
     <div class="sidebar-footer">
+      <!-- بيانات المستخدم الحالي -->
+      <div class="flex items-center gap-2" style="margin-bottom: 10px;">
+        <div id="user-avatar" style="width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;">—</div>
+        <div style="min-width:0;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="user-display-name">جاري التحميل...</div>
+          <div style="font-size:10px;color:var(--text-tertiary);" id="user-role-label">—</div>
+        </div>
+      </div>
+
       <div class="system-status">
         <div class="status-dot online" id="system-dot"></div>
         <span class="status-label" id="system-label">النظام يعمل</span>
       </div>
-      <button class="btn-toggle" id="btn-toggle-system" onclick="toggleSystem()">إيقاف النظام</button>
+      <button class="btn-toggle" id="btn-toggle-system" onclick="toggleSystem()" style="margin-bottom:6px;">إيقاف النظام</button>
+      <button class="btn-toggle" onclick="logout()" style="background:rgba(255,59,48,0.08);color:var(--danger);border-color:rgba(255,59,48,0.2);">🚪 تسجيل الخروج</button>
     </div>
   </aside>
 
@@ -546,6 +561,7 @@
     'settings':   '/static/pages/settings.html',
     'api-keys':   '/static/pages/api-keys.html',
     'analytics':  '/static/pages/analytics.html',
+    'admin':      '/static/pages/admin.html',
   };
 
   let currentPage = '';
@@ -625,17 +641,43 @@
     }
   }
 
+  // ── Logout ─────────────────────────────────────────────────────────────────
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }
+
   // ── Init ────────────────────────────────────────────────────────────────────
   async function init() {
-    // جلب الحالة
+    // ① تحقق من المصادقة أولاً
+    let me;
+    try {
+      const meResp = await fetch('/api/auth/me');
+      if (meResp.status === 401) { window.location.href = '/login'; return; }
+      me = await meResp.json();
+    } catch (e) {
+      window.location.href = '/login';
+      return;
+    }
+
+    // ② عرض بيانات المستخدم في الـ sidebar
+    const initials = (me.display_name || me.username || '').slice(0, 2).toUpperCase() || '؟';
+    document.getElementById('user-avatar').textContent = initials;
+    document.getElementById('user-display-name').textContent = me.display_name || me.username;
+    document.getElementById('user-role-label').textContent = me.role === 'admin' ? '👑 مدير' : '👤 مستخدم';
+
+    // ③ أظهر رابط إدارة المستخدمين للمديرين فقط
+    if (me.role === 'admin') {
+      document.getElementById('nav-admin').classList.remove('hidden');
+    }
+
+    // ④ جلب الإحصاءات والإعدادات
     try {
       const [stats, settings] = await Promise.all([
         fetch('/api/stats').then(r => r.json()),
         fetch('/api/settings').then(r => r.json()),
       ]);
       updateSystemStatus(settings.system_enabled ?? true);
-
-      // تحديث badge
       if (stats.pending_count > 0) {
         const badge = document.getElementById('queue-badge');
         badge.textContent = stats.pending_count;
@@ -643,17 +685,24 @@
       }
     } catch (e) { /* تجاهل */ }
 
-    // تحميل الصفحة الافتراضية
+    // ⑤ تحميل الصفحة الافتراضية
     navigateTo('dashboard');
 
-    // تحديث دوري كل دقيقة
+    // ⑥ تحديث دوري كل دقيقة
     setInterval(async () => {
       try {
         const stats = await fetch('/api/stats').then(r => r.json());
+        // إذا انتهت الجلسة → وجّه لصفحة الدخول
+        if (!stats || stats.detail === 'غير مصادق عليه') {
+          window.location.href = '/login';
+          return;
+        }
+        const badge = document.getElementById('queue-badge');
         if (stats.pending_count > 0) {
-          const badge = document.getElementById('queue-badge');
           badge.textContent = stats.pending_count;
           badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
         }
       } catch (e) {}
     }, 60000);

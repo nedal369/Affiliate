@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Body, Query
+from fastapi import FastAPI, HTTPException, Body, Query, Request, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 logging.basicConfig(
@@ -52,12 +52,255 @@ if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
+# ── Auth Middleware ───────────────────────────────────────────────────────────────
+# المسارات العامة التي لا تحتاج تسجيل دخول
+_PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/health"}
+_PUBLIC_PREFIXES = ("/static/",)
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # السماح بالمسارات العامة دون مصادقة
+    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    # قراءة الـ token من الـ cookie
+    token = request.cookies.get("access_token")
+    if not token:
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "غير مصادق عليه"}, status_code=401)
+        return RedirectResponse(url="/login", status_code=302)
+
+    from backend.services.auth_service import get_user_from_token
+    user = get_user_from_token(token)
+    if not user:
+        if path.startswith("/api/"):
+            resp = JSONResponse({"detail": "جلسة منتهية — سجّل دخولك مجدداً"}, status_code=401)
+        else:
+            resp = RedirectResponse(url="/login", status_code=302)
+        resp.delete_cookie("access_token")
+        return resp
+
+    # أضف بيانات المستخدم للـ request state
+    request.state.user = user
+    return await call_next(request)
+
+
+# ── Helper: Current User ──────────────────────────────────────────────────────────
+def _get_user(request: Request) -> dict:
+    return getattr(request.state, "user", {})
+
+def _require_admin(request: Request) -> dict:
+    user = _get_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "صلاحيات المدير مطلوبة")
+    return user
+
+
+# ── صفحة تسجيل الدخول (مسار عام) ─────────────────────────────────────────────
+@app.get("/login")
+async def login_page():
+    login_html = FRONTEND_DIR / "login.html"
+    if login_html.exists():
+        return FileResponse(str(login_html))
+    return JSONResponse({"error": "login.html غير موجود"}, status_code=404)
+
+
+# ── الصفحة الرئيسية (محمية) ───────────────────────────────────────────────────
 @app.get("/")
 async def root():
     index = FRONTEND_DIR / "index.html"
     if index.exists():
         return FileResponse(str(index))
     return {"message": "Affiliate Automation System", "status": "running"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# AUTH ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/auth/login")
+async def login(body: LoginBody, response: Response):
+    from backend.services.auth_service import authenticate_user, create_access_token
+    user = authenticate_user(body.username.strip(), body.password)
+    if not user:
+        raise HTTPException(401, "اسم المستخدم أو كلمة المرور غير صحيحة")
+
+    token = create_access_token(user["id"], user["username"], user["role"])
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,   # 7 أيام
+        secure=False,                 # True في الإنتاج مع HTTPS
+    )
+    return {"success": True, "user": user}
+
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token")
+    return {"success": True}
+
+
+@app.get("/api/auth/me")
+async def get_me(request: Request):
+    return _get_user(request)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# USER MANAGEMENT ENDPOINTS (Admin only)
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/users")
+async def list_users(request: Request):
+    _require_admin(request)
+    from backend.config import SessionLocal
+    from backend.models import User
+    with SessionLocal() as db:
+        users = db.query(User).order_by(User.created_at).all()
+        return [_user_to_dict(u) for u in users]
+
+
+class CreateUserBody(BaseModel):
+    username: str
+    password: str
+    display_name: Optional[str] = None
+    role: str = "user"
+
+@app.post("/api/users")
+async def create_user(request: Request, body: CreateUserBody):
+    _require_admin(request)
+    from backend.config import SessionLocal
+    from backend.models import User
+    from backend.services.auth_service import get_password_hash
+
+    if len(body.password) < 6:
+        raise HTTPException(400, "كلمة المرور يجب أن تكون 6 أحرف على الأقل")
+    if body.role not in ("admin", "user"):
+        raise HTTPException(400, "الدور يجب أن يكون admin أو user")
+
+    with SessionLocal() as db:
+        exists = db.query(User).filter(User.username == body.username.strip()).first()
+        if exists:
+            raise HTTPException(400, "اسم المستخدم موجود بالفعل")
+        user = User(
+            username=body.username.strip(),
+            password_hash=get_password_hash(body.password),
+            display_name=body.display_name or body.username,
+            role=body.role,
+            active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return {"success": True, "user": _user_to_dict(user)}
+
+
+class UpdateUserBody(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+    active: Optional[bool] = None
+    new_password: Optional[str] = None
+
+@app.patch("/api/users/{user_id}")
+async def update_user(request: Request, user_id: int, body: UpdateUserBody):
+    _require_admin(request)
+    from backend.config import SessionLocal
+    from backend.models import User
+    from backend.services.auth_service import get_password_hash
+
+    current = _get_user(request)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "المستخدم غير موجود")
+
+        # منع حذف أو تعطيل الـ admin الأخير
+        if user.role == "admin" and body.active is False:
+            admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
+            if admin_count <= 1:
+                raise HTTPException(400, "لا يمكن تعطيل آخر حساب مدير")
+
+        if body.display_name is not None:
+            user.display_name = body.display_name
+        if body.role is not None:
+            if body.role not in ("admin", "user"):
+                raise HTTPException(400, "الدور غير صالح")
+            user.role = body.role
+        if body.active is not None:
+            user.active = body.active
+        if body.new_password:
+            if len(body.new_password) < 6:
+                raise HTTPException(400, "كلمة المرور يجب أن تكون 6 أحرف على الأقل")
+            user.password_hash = get_password_hash(body.new_password)
+
+        db.commit()
+        db.refresh(user)
+        return {"success": True, "user": _user_to_dict(user)}
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(request: Request, user_id: int):
+    _require_admin(request)
+    current = _get_user(request)
+    if current.get("id") == user_id:
+        raise HTTPException(400, "لا يمكنك حذف حسابك الخاص")
+    from backend.config import SessionLocal
+    from backend.models import User
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "المستخدم غير موجود")
+        if user.role == "admin":
+            admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
+            if admin_count <= 1:
+                raise HTTPException(400, "لا يمكن حذف آخر حساب مدير")
+        db.delete(user)
+        db.commit()
+    return {"success": True}
+
+
+# تغيير كلمة المرور الخاصة بالمستخدم الحالي
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/auth/change-password")
+async def change_password(request: Request, body: ChangePasswordBody):
+    current = _get_user(request)
+    from backend.config import SessionLocal
+    from backend.models import User
+    from backend.services.auth_service import verify_password, get_password_hash
+
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل")
+
+    with SessionLocal() as db:
+        user = db.get(User, current["id"])
+        if not verify_password(body.current_password, user.password_hash):
+            raise HTTPException(400, "كلمة المرور الحالية غير صحيحة")
+        user.password_hash = get_password_hash(body.new_password)
+        db.commit()
+    return {"success": True}
+
+
+def _user_to_dict(u) -> dict:
+    return {
+        "id":           u.id,
+        "username":     u.username,
+        "display_name": u.display_name or u.username,
+        "role":         u.role,
+        "active":       u.active,
+        "created_at":   u.created_at.isoformat() if u.created_at else None,
+        "last_login":   u.last_login.isoformat() if u.last_login else None,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════

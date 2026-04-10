@@ -197,4 +197,28 @@ def init_db():
     from backend import models  # noqa — ensure models are registered
     Base.metadata.create_all(bind=engine)
     init_default_settings()
+    _create_default_admin()
     logger.info(f"قاعدة البيانات جاهزة: {DB_PATH}")
+
+
+def _create_default_admin():
+    """أنشئ حساب admin افتراضي عند أول تشغيل"""
+    from backend.models import User
+    from backend.services.auth_service import get_password_hash
+    with SessionLocal() as db:
+        exists = db.query(User).first()
+        if exists:
+            return  # يوجد مستخدمون — لا تفعل شيئاً
+        admin = User(
+            username="admin",
+            password_hash=get_password_hash("admin123"),
+            display_name="المدير",
+            role="admin",
+            active=True,
+        )
+        db.add(admin)
+        db.commit()
+        logger.warning(
+            "✅ تم إنشاء حساب المدير الافتراضي — admin / admin123 — "
+            "غيّر كلمة المرور فور تسجيل الدخول!"
+        )

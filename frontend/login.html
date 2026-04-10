@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تسجيل الدخول — نظام الإحالة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #F5F5F7;
+      --card:    #FFFFFF;
+      --border:  rgba(0,0,0,0.08);
+      --text:    #1D1D1F;
+      --sub:     #6E6E73;
+      --accent:  #0071E3;
+      --danger:  #FF3B30;
+      --success: #34C759;
+      --radius:  16px;
+      --font:    'Plus Jakarta Sans', -apple-system, sans-serif;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .login-wrapper {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    /* ── الشعار ── */
+    .brand {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .brand-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--accent);
+      border-radius: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(0,113,227,0.3);
+    }
+    .brand h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .brand p {
+      font-size: 13px;
+      color: var(--sub);
+    }
+
+    /* ── بطاقة تسجيل الدخول ── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: 0 2px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .card-sub {
+      font-size: 13px;
+      color: var(--sub);
+      margin-bottom: 28px;
+    }
+
+    /* ── حقول الإدخال ── */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--sub);
+      margin-bottom: 6px;
+    }
+    .input-wrap {
+      position: relative;
+    }
+    .form-control {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: #FAFAFA;
+      color: var(--text);
+      font-size: 14px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-control:focus {
+      border-color: var(--accent);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(0,113,227,0.1);
+    }
+    .form-control.error {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(255,59,48,0.1);
+    }
+    .toggle-pw {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: var(--sub);
+      padding: 4px;
+      line-height: 1;
+    }
+
+    /* ── زر الدخول ── */
+    .btn-login {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      margin-top: 8px;
+      box-shadow: 0 4px 12px rgba(0,113,227,0.3);
+    }
+    .btn-login:hover:not(:disabled) {
+      background: #0077ED;
+      box-shadow: 0 6px 18px rgba(0,113,227,0.4);
+    }
+    .btn-login:active:not(:disabled) { transform: scale(0.98); }
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* ── رسالة الخطأ ── */
+    .error-msg {
+      background: rgba(255,59,48,0.08);
+      border: 1px solid rgba(255,59,48,0.2);
+      color: var(--danger);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .error-msg.show { display: flex; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer ── */
+    .login-footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--sub);
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-wrapper">
+
+  <!-- الشعار -->
+  <div class="brand">
+    <div class="brand-icon">🔗</div>
+    <h1>نظام الإحالة الذكي</h1>
+    <p>Affiliate Automation System</p>
+  </div>
+
+  <!-- البطاقة -->
+  <div class="card">
+    <div class="card-title">تسجيل الدخول</div>
+    <div class="card-sub">أدخل بياناتك للوصول إلى لوحة التحكم</div>
+
+    <!-- رسالة الخطأ -->
+    <div class="error-msg" id="error-msg">
+      <span>⚠️</span>
+      <span id="error-text">خطأ في تسجيل الدخول</span>
+    </div>
+
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <!-- اسم المستخدم -->
+      <div class="form-group">
+        <label class="form-label" for="username">اسم المستخدم</label>
+        <input
+          class="form-control"
+          type="text"
+          id="username"
+          name="username"
+          placeholder="admin"
+          autocomplete="username"
+          required
+        />
+      </div>
+
+      <!-- كلمة المرور -->
+      <div class="form-group">
+        <label class="form-label" for="password">كلمة المرور</label>
+        <div class="input-wrap">
+          <input
+            class="form-control"
+            type="password"
+            id="password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+          <button type="button" class="toggle-pw" onclick="togglePw()" id="pw-eye">👁</button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-login" id="btn-login">
+        دخول
+      </button>
+    </form>
+  </div>
+
+  <div class="login-footer">
+    جميع المفاتيح مشفّرة · البيانات محمية
+  </div>
+</div>
+
+<script>
+  // إذا كان المستخدم مسجلاً دخوله، وجّهه للرئيسية
+  (async () => {
+    try {
+      const r = await fetch('/api/auth/me');
+      if (r.ok) window.location.href = '/';
+    } catch (_) {}
+  })();
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn  = document.getElementById('btn-login');
+    const err  = document.getElementById('error-msg');
+    const errT = document.getElementById('error-text');
+
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+
+    if (!username || !password) return;
+
+    // Loading state
+    btn.disabled = true;
+    btn.innerHTML = 'جاري التحقق <span class="spinner"></span>';
+    err.classList.remove('show');
+
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await resp.json();
+
+      if (resp.ok && data.success) {
+        btn.innerHTML = '✓ تم الدخول — جاري التحويل...';
+        btn.style.background = '#34C759';
+        setTimeout(() => { window.location.href = '/'; }, 600);
+      } else {
+        showError(data.detail || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+        document.getElementById('password').classList.add('error');
+        document.getElementById('password').focus();
+        btn.disabled = false;
+        btn.innerHTML = 'دخول';
+      }
+    } catch (ex) {
+      showError('تعذّر الاتصال بالخادم — تحقق من الاتصال');
+      btn.disabled = false;
+      btn.innerHTML = 'دخول';
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('error-text').textContent = msg;
+    document.getElementById('error-msg').classList.add('show');
+  }
+
+  function togglePw() {
+    const inp = document.getElementById('password');
+    const eye = document.getElementById('pw-eye');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    eye.textContent = inp.type === 'password' ? '👁' : '🙈';
+  }
+
+  // مسح حالة الخطأ عند الكتابة
+  document.getElementById('password').addEventListener('input', () => {
+    document.getElementById('password').classList.remove('error');
+    document.getElementById('error-msg').classList.remove('show');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,433 @@
+<!-- صفحة إدارة المستخدمين (Admin only) -->
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">👥 إدارة المستخدمين</h2>
+    <p class="page-subtitle">إضافة وتعديل وحذف مستخدمي لوحة التحكم</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="loadUsers()">🔄 تحديث</button>
+    <button class="btn btn-primary" onclick="showAddUserModal()">+ إضافة مستخدم</button>
+  </div>
+</div>
+
+<style>
+.user-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s;
+}
+.user-card:hover { box-shadow: var(--shadow-md); }
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, #34C759 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.user-avatar.admin-avatar {
+  background: linear-gradient(135deg, #FF9500 0%, #FF3B30 100%);
+}
+
+.user-info { flex: 1; min-width: 0; }
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.user-username {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.inactive-overlay {
+  opacity: 0.5;
+}
+
+/* ── Info Banner ── */
+.info-banner {
+  background: rgba(0,113,227,0.06);
+  border: 1px solid rgba(0,113,227,0.15);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.info-banner strong { color: var(--accent); }
+
+/* ── Change Password Section ── */
+.my-account-card {
+  margin-bottom: 32px;
+}
+</style>
+
+<!-- بانر معلومات الحساب الافتراضي -->
+<div class="info-banner" id="default-banner">
+  🔐 الحساب الافتراضي: <strong>admin</strong> / <strong>admin123</strong> — غيّر كلمة المرور فور الدخول من خلال زر "تغيير كلمتي".
+</div>
+
+<!-- حسابي — تغيير كلمة المرور -->
+<div class="card my-account-card">
+  <div class="card-header">
+    <span class="card-title">🔑 حسابي — <span id="my-username-label">—</span></span>
+    <button class="btn btn-secondary btn-sm" onclick="showChangePasswordModal()">🔒 تغيير كلمتي</button>
+  </div>
+  <div class="card-body" style="padding: 14px 24px;">
+    <div class="flex items-center gap-4">
+      <div>
+        <span class="text-sm text-secondary">الدور: </span>
+        <span id="my-role-badge">—</span>
+      </div>
+      <div>
+        <span class="text-sm text-secondary">آخر دخول: </span>
+        <span class="text-sm" id="my-last-login">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- قائمة المستخدمين -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">المستخدمون (<span id="users-count">0</span>)</span>
+  </div>
+  <div class="card-body" id="users-list">
+    <div style="text-align:center;padding:40px;color:var(--text-tertiary);">جاري التحميل...</div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+let allUsers = [];
+
+// ── تحميل البيانات ─────────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    [currentUser, allUsers] = await Promise.all([
+      fetch('/api/auth/me').then(r => r.json()),
+      fetch('/api/users').then(r => r.json()),
+    ]);
+
+    // عرض بيانات الحساب الخاص
+    document.getElementById('my-username-label').textContent = currentUser.username;
+    document.getElementById('my-role-badge').innerHTML =
+      currentUser.role === 'admin'
+        ? '<span class="badge badge-warning">👑 مدير</span>'
+        : '<span class="badge badge-info">👤 مستخدم</span>';
+    document.getElementById('my-last-login').textContent = formatDate(currentUser.last_login) || 'الآن';
+
+    renderUsers();
+  } catch (e) {
+    document.getElementById('users-list').innerHTML =
+      '<div style="color:var(--danger);text-align:center;padding:32px;">خطأ في تحميل المستخدمين</div>';
+  }
+}
+
+function renderUsers() {
+  const list = document.getElementById('users-list');
+  document.getElementById('users-count').textContent = allUsers.length;
+
+  if (!allUsers.length) {
+    list.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-tertiary);">لا يوجد مستخدمون</div>';
+    return;
+  }
+
+  list.innerHTML = allUsers.map(u => {
+    const isMe = u.id === currentUser.id;
+    const initials = (u.display_name || u.username).slice(0, 2);
+    const isAdmin = u.role === 'admin';
+    const avatarClass = isAdmin ? 'user-avatar admin-avatar' : 'user-avatar';
+
+    return `
+      <div class="user-card ${u.active ? '' : 'inactive-overlay'}" id="user-row-${u.id}">
+        <div class="${avatarClass}">${initials}</div>
+        <div class="user-info">
+          <div class="user-name">
+            ${u.display_name || u.username}
+            ${isMe ? '<span style="font-size:11px;color:var(--accent);font-weight:500;margin-right:6px;">(أنت)</span>' : ''}
+          </div>
+          <div class="user-username">@${u.username}</div>
+          <div class="user-meta">
+            <span class="badge ${isAdmin ? 'badge-warning' : 'badge-info'}">${isAdmin ? '👑 مدير' : '👤 مستخدم'}</span>
+            <span class="badge ${u.active ? 'badge-success' : 'badge-danger'}">${u.active ? 'نشط' : 'معطّل'}</span>
+            <span class="text-sm text-secondary">آخر دخول: ${formatDate(u.last_login) || 'لم يسجل بعد'}</span>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="btn btn-secondary btn-sm" onclick="showEditModal(${u.id})" title="تعديل">✎</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleUserActive(${u.id}, ${!u.active})"
+            title="${u.active ? 'تعطيل' : 'تفعيل'}">${u.active ? '🔒' : '🔓'}</button>
+          ${!isMe ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${u.username}')" title="حذف">✕</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── إضافة مستخدم جديد ─────────────────────────────────────────────────────────
+function showAddUserModal() {
+  showModal({
+    title: '+ إضافة مستخدم جديد',
+    body: `
+      <div class="form-group">
+        <label class="form-label">اسم المستخدم (للدخول)</label>
+        <input class="form-control" id="new-username" placeholder="username" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">الاسم المعروض</label>
+        <input class="form-control" id="new-display" placeholder="محمد أحمد" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">كلمة المرور</label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="new-password" placeholder="6 أحرف على الأقل" autocomplete="new-password" />
+          <button type="button" onclick="toggleVis('new-password')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">الدور</label>
+        <select class="form-control" id="new-role">
+          <option value="user">👤 مستخدم عادي</option>
+          <option value="admin">👑 مدير (وصول كامل)</option>
+        </select>
+      </div>
+      <div style="background:rgba(255,149,0,0.08);border:1px solid rgba(255,149,0,0.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-secondary);margin-top:8px;">
+        ⚠️ المديرون يملكون صلاحية إضافة وحذف المستخدمين وتغيير جميع الإعدادات.
+      </div>`,
+    confirmText: 'إضافة المستخدم',
+    confirmClass: 'btn-primary',
+    onConfirm: async () => {
+      const username = document.getElementById('new-username')?.value?.trim();
+      const display  = document.getElementById('new-display')?.value?.trim();
+      const password = document.getElementById('new-password')?.value;
+      const role     = document.getElementById('new-role')?.value;
+
+      if (!username || !password) {
+        showToast('اسم المستخدم وكلمة المرور مطلوبان', 'warning');
+        return;
+      }
+      if (password.length < 6) {
+        showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, display_name: display || username, password, role }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          showToast(`✓ تم إضافة المستخدم @${username}`, 'success');
+          await loadUsers();
+        } else {
+          showToast(data.detail || 'خطأ في الإضافة', 'error');
+        }
+      } catch (e) {
+        showToast('خطأ في الاتصال', 'error');
+      }
+    },
+  });
+}
+
+// ── تعديل مستخدم ──────────────────────────────────────────────────────────────
+function showEditModal(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  showModal({
+    title: `✎ تعديل: @${u.username}`,
+    body: `
+      <div class="form-group">
+        <label class="form-label">الاسم المعروض</label>
+        <input class="form-control" id="edit-display" value="${u.display_name || u.username}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">الدور</label>
+        <select class="form-control" id="edit-role">
+          <option value="user" ${u.role === 'user' ? 'selected' : ''}>👤 مستخدم عادي</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>👑 مدير</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">كلمة المرور الجديدة (اتركها فارغة للإبقاء)</label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="edit-password" placeholder="اتركها فارغة إذا لم تريد التغيير" autocomplete="new-password" />
+          <button type="button" onclick="toggleVis('edit-password')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">👁</button>
+        </div>
+      </div>`,
+    confirmText: 'حفظ التعديلات',
+    confirmClass: 'btn-primary',
+    onConfirm: async () => {
+      const display  = document.getElementById('edit-display')?.value?.trim();
+      const role     = document.getElementById('edit-role')?.value;
+      const password = document.getElementById('edit-password')?.value;
+      const body = { display_name: display, role };
+      if (password) {
+        if (password.length < 6) { showToast('كلمة المرور أقل من 6 أحرف', 'warning'); return; }
+        body.new_password = password;
+      }
+      try {
+        const resp = await fetch(`/api/users/${userId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          showToast('✓ تم حفظ التعديلات', 'success');
+          await loadUsers();
+        } else {
+          showToast(data.detail || 'خطأ في التعديل', 'error');
+        }
+      } catch (e) {
+        showToast('خطأ في الاتصال', 'error');
+      }
+    },
+  });
+}
+
+// ── تفعيل / تعطيل ─────────────────────────────────────────────────────────────
+async function toggleUserActive(userId, newState) {
+  try {
+    const resp = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: newState }),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      showToast(newState ? '✓ تم تفعيل الحساب' : 'تم تعطيل الحساب', newState ? 'success' : 'warning');
+      await loadUsers();
+    } else {
+      showToast(data.detail || 'خطأ', 'error');
+    }
+  } catch (e) {
+    showToast('خطأ في الاتصال', 'error');
+  }
+}
+
+// ── حذف مستخدم ────────────────────────────────────────────────────────────────
+function deleteUser(userId, username) {
+  showConfirmModal({
+    title: 'حذف المستخدم',
+    message: `هل تريد حذف الحساب <strong>@${username}</strong> نهائياً؟<br>لا يمكن التراجع عن هذه العملية.`,
+    confirmText: 'حذف نهائياً',
+    confirmClass: 'btn-danger',
+    onConfirm: async () => {
+      try {
+        const resp = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (resp.ok) {
+          showToast(`✓ تم حذف @${username}`, 'warning');
+          await loadUsers();
+        } else {
+          showToast(data.detail || 'خطأ في الحذف', 'error');
+        }
+      } catch (e) {
+        showToast('خطأ في الاتصال', 'error');
+      }
+    },
+  });
+}
+
+// ── تغيير كلمة المرور الخاصة ────────────────────────────────────────────────
+function showChangePasswordModal() {
+  showModal({
+    title: '🔒 تغيير كلمة المرور',
+    body: `
+      <div class="form-group">
+        <label class="form-label">كلمة المرور الحالية</label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="cp-current" placeholder="كلمة المرور الحالية" autocomplete="current-password" />
+          <button type="button" onclick="toggleVis('cp-current')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">كلمة المرور الجديدة</label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="cp-new" placeholder="6 أحرف على الأقل" autocomplete="new-password" />
+          <button type="button" onclick="toggleVis('cp-new')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">تأكيد كلمة المرور</label>
+        <input class="form-control" type="password" id="cp-confirm" placeholder="أعد كتابة كلمة المرور الجديدة" autocomplete="new-password" />
+      </div>`,
+    confirmText: 'تغيير كلمة المرور',
+    confirmClass: 'btn-primary',
+    onConfirm: async () => {
+      const current  = document.getElementById('cp-current')?.value;
+      const newPw    = document.getElementById('cp-new')?.value;
+      const confirm  = document.getElementById('cp-confirm')?.value;
+
+      if (!current || !newPw) { showToast('كل الحقول مطلوبة', 'warning'); return; }
+      if (newPw.length < 6)   { showToast('كلمة المرور أقل من 6 أحرف', 'warning'); return; }
+      if (newPw !== confirm)   { showToast('كلمتا المرور غير متطابقتين', 'warning'); return; }
+
+      try {
+        const resp = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current_password: current, new_password: newPw }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          showToast('✓ تم تغيير كلمة المرور بنجاح', 'success');
+          document.getElementById('default-banner').style.display = 'none';
+        } else {
+          showToast(data.detail || 'خطأ في التغيير', 'error');
+        }
+      } catch (e) {
+        showToast('خطأ في الاتصال', 'error');
+      }
+    },
+  });
+}
+
+// ── مساعد إظهار/إخفاء كلمة المرور ────────────────────────────────────────────
+function toggleVis(id) {
+  const el = document.getElementById(id);
+  if (el) el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadUsers();
+</script>

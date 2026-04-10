@@ -78,3 +78,21 @@ class TrendKeyword(Base):
     platform = Column(String(50), nullable=True)
     active = Column(Boolean, default=True)
     last_used = Column(DateTime, nullable=True)
+
+
+class User(Base):
+    """مستخدمو لوحة التحكم"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    display_name = Column(String(200), nullable=True)
+    role = Column(String(20), default="user")   # admin | user
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_users_username", "username"),
+    )
