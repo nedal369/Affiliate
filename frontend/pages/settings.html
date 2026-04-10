@@ -1,0 +1,341 @@
+<!-- صفحة الإعدادات -->
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">⚙️ الإعدادات</h2>
+    <p class="page-subtitle">تحكم في آلية عمل النظام</p>
+  </div>
+</div>
+
+<div style="max-width: 720px;" id="settings-form">
+  <!-- جاري التحميل -->
+  <div class="skeleton" style="height: 200px; margin-bottom: 16px; border-radius: var(--radius-lg);"></div>
+  <div class="skeleton" style="height: 160px; margin-bottom: 16px; border-radius: var(--radius-lg);"></div>
+</div>
+
+<!-- زر الحفظ الثابت -->
+<div id="save-bar" style="position:fixed;bottom:0;right:0;left:var(--sidebar-width);background:var(--card);border-top:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 -4px 16px rgba(0,0,0,0.06);z-index:100;">
+  <span class="text-secondary text-sm" id="save-status">لم يتم حفظ التغييرات بعد</span>
+  <button class="btn btn-primary" onclick="saveSettings()">💾 حفظ الإعدادات</button>
+</div>
+
+<div style="height: 80px;"></div>
+
+<script>
+let settingsData = {};
+let aiModels = [];
+
+async function loadSettings() {
+  try {
+    [settingsData, aiModels] = await Promise.all([
+      fetch('/api/settings').then(r => r.json()),
+      fetch('/api/ai/models').then(r => r.json()),
+    ]);
+    renderSettings();
+  } catch (e) {
+    showToast('خطأ في تحميل الإعدادات', 'error');
+  }
+}
+
+function toggle(key, el) {
+  settingsData[key] = el.checked;
+  document.getElementById('save-status').textContent = 'لديك تغييرات غير محفوظة ⚠️';
+}
+function setVal(key, el) {
+  settingsData[key] = el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
+  document.getElementById('save-status').textContent = 'لديك تغييرات غير محفوظة ⚠️';
+}
+
+function renderSettings() {
+  const s = settingsData;
+  const modelsOptions = aiModels.map(m =>
+    `<option value="${m.id}" ${s.primary_llm === m.id ? 'selected' : ''}>${m.label || m.name}</option>`
+  ).join('');
+
+  document.getElementById('settings-form').innerHTML = `
+
+    <!-- قسم 1: إعدادات الجلب -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">🌐 إعدادات الجلب</span></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div><div class="toggle-label">تفعيل TikTok كمصدر</div></div>
+          <label class="toggle"><input type="checkbox" ${s.enable_tiktok ? 'checked' : ''} onchange="toggle('enable_tiktok', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">تفعيل Instagram كمصدر</div></div>
+          <label class="toggle"><input type="checkbox" ${s.enable_instagram ? 'checked' : ''} onchange="toggle('enable_instagram', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="mt-4">
+          <div class="form-group">
+            <label class="form-label">الحد الأدنى للخصم: <strong id="disc-val">${s.min_discount_pct || 30}%</strong></label>
+            <input type="range" class="form-control" min="5" max="80" step="5" value="${s.min_discount_pct || 30}"
+              oninput="document.getElementById('disc-val').textContent=this.value+'%'; setVal('min_discount_pct', this)">
+          </div>
+          <div class="form-group">
+            <label class="form-label">الحد الأدنى للتقييم</label>
+            <select class="form-control" onchange="setVal('min_rating', this)">
+              ${[3.0, 3.5, 4.0, 4.5].map(v => `<option value="${v}" ${(s.min_rating||4.0) == v ? 'selected' : ''}>${v} نجوم</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">الحد الأدنى للمشاهدات</label>
+            <select class="form-control" onchange="setVal('min_views', this)">
+              ${[10000, 50000, 100000, 500000, 1000000].map(v =>
+                `<option value="${v}" ${(s.min_views||100000) == v ? 'selected' : ''}>${formatNumber(v)} مشاهدة</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- قسم 2: إعدادات الجدولة -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">🕐 إعدادات الجدولة</span></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">تشغيل صباحي</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="time" class="form-control" style="width:110px;" value="${s.time_morning || '08:00'}" onchange="setVal('time_morning', this)">
+            <label class="toggle"><input type="checkbox" ${s.schedule_morning ? 'checked' : ''} onchange="toggle('schedule_morning', this)"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">تشغيل ظهري</div></div>
+          <div class="flex items-center gap-2">
+            <input type="time" class="form-control" style="width:110px;" value="${s.time_afternoon || '14:00'}" onchange="setVal('time_afternoon', this)">
+            <label class="toggle"><input type="checkbox" ${s.schedule_afternoon ? 'checked' : ''} onchange="toggle('schedule_afternoon', this)"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">تشغيل مسائي</div></div>
+          <div class="flex items-center gap-2">
+            <input type="time" class="form-control" style="width:110px;" value="${s.time_evening || '20:00'}" onchange="setVal('time_evening', this)">
+            <label class="toggle"><input type="checkbox" ${s.schedule_evening ? 'checked' : ''} onchange="toggle('schedule_evening', this)"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- قسم 3: إعدادات النشر -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">📤 إعدادات النشر</span></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">موافقة يدوية قبل النشر</div>
+            <div class="toggle-desc">إيقافه = الموافقة التلقائية الفورية</div>
+          </div>
+          <label class="toggle"><input type="checkbox" ${s.manual_approval ? 'checked' : ''} onchange="toggle('manual_approval', this); toggle('auto_approve', {checked: !this.checked})"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">إرفاق صورة المنتج</div></div>
+          <label class="toggle"><input type="checkbox" ${s.attach_image !== false ? 'checked' : ''} onchange="toggle('attach_image', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div style="border-top: 1px solid var(--border); margin: 12px 0;"></div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">📨 تفعيل Telegram</div></div>
+          <label class="toggle"><input type="checkbox" ${s.enable_telegram ? 'checked' : ''} onchange="toggle('enable_telegram', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">💬 تفعيل WhatsApp</div></div>
+          <label class="toggle"><input type="checkbox" ${s.enable_whatsapp ? 'checked' : ''} onchange="toggle('enable_whatsapp', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">𝕏 تفعيل منصة X</div></div>
+          <label class="toggle"><input type="checkbox" ${s.enable_x ? 'checked' : ''} onchange="toggle('enable_x', this)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- قسم 4: الذكاء الاصطناعي -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">🤖 إعدادات الذكاء الاصطناعي</span></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">النموذج الأساسي</label>
+          <select class="form-control" id="primary-llm-select" onchange="setVal('primary_llm', this)">
+            ${modelsOptions}
+          </select>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">تفعيل الانتقال التلقائي (Fallback)</div>
+            <div class="toggle-desc">عند فشل النموذج الأساسي، ينتقل للتالي تلقائياً</div>
+          </div>
+          <label class="toggle"><input type="checkbox" ${s.llm_fallback !== false ? 'checked' : ''} onchange="toggle('llm_fallback', this)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- قسم 5: الحسابات المراقبة -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="card-title">👥 الحسابات المراقبة</span>
+        <button class="btn btn-primary btn-sm" onclick="addAccountDialog()">+ إضافة حساب</button>
+      </div>
+      <div class="card-body" id="accounts-list">
+        <div class="text-secondary text-sm" style="text-align:center;padding:16px;">جاري التحميل...</div>
+      </div>
+    </div>
+
+    <!-- قسم 6: الكلمات المفتاحية -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="card-title">🔍 الكلمات المفتاحية</span>
+        <button class="btn btn-primary btn-sm" onclick="addKeywordDialog()">+ إضافة كلمة</button>
+      </div>
+      <div class="card-body" id="keywords-list">
+        <div class="text-secondary text-sm" style="text-align:center;padding:16px;">جاري التحميل...</div>
+      </div>
+    </div>
+  `;
+
+  loadAccounts();
+  loadKeywords();
+}
+
+async function saveSettings() {
+  const btn = document.querySelector('#save-bar .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'جاري الحفظ...';
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settingsData),
+    });
+    showToast('✓ تم حفظ الإعدادات', 'success');
+    document.getElementById('save-status').textContent = 'تم الحفظ ✓';
+  } catch (e) {
+    showToast('خطأ في الحفظ', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 حفظ الإعدادات';
+  }
+}
+
+// ── الحسابات ─────────────────────────────────────────────────────────────────
+async function loadAccounts() {
+  const data = await fetch('/api/accounts').then(r => r.json());
+  const el = document.getElementById('accounts-list');
+  if (!data.length) {
+    el.innerHTML = '<div class="text-secondary text-sm" style="text-align:center;padding:16px;">لا توجد حسابات مراقبة — أضف حساباً للبدء</div>';
+    return;
+  }
+  el.innerHTML = data.map(a => `
+    <div class="flex items-center gap-3" style="padding: 10px 0; border-bottom: 1px solid var(--border);">
+      <span>${a.platform === 'tiktok' ? '🎵' : '📸'}</span>
+      <span style="font-size:13px;font-weight:500;">@${a.username}</span>
+      <span class="badge ${a.platform === 'tiktok' ? 'badge-info' : 'badge-warning'}">${a.platform}</span>
+      <span class="text-secondary text-sm" style="margin-right:auto;">${a.posts_found || 0} منشور</span>
+      <label class="toggle" style="transform:scale(0.85);">
+        <input type="checkbox" ${a.active ? 'checked' : ''} onchange="toggleAccount(${a.id}, this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <button class="btn btn-danger btn-sm" onclick="deleteAccount(${a.id})">✕</button>
+    </div>`).join('');
+}
+
+function addAccountDialog() {
+  showModal({
+    title: '+ إضافة حساب مراقب',
+    body: `
+      <div class="form-group">
+        <label class="form-label">المنصة</label>
+        <select class="form-control" id="new-acc-platform">
+          <option value="tiktok">🎵 TikTok</option>
+          <option value="instagram">📸 Instagram</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">اسم المستخدم</label>
+        <input class="form-control" id="new-acc-username" placeholder="@username (بدون @)">
+      </div>`,
+    confirmText: 'إضافة',
+    confirmClass: 'btn-primary',
+    onConfirm: async () => {
+      const platform = document.getElementById('new-acc-platform').value;
+      const username = document.getElementById('new-acc-username').value.trim().replace('@', '');
+      if (!username) return;
+      await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, username }),
+      });
+      showToast('✓ تم إضافة الحساب', 'success');
+      loadAccounts();
+    },
+  });
+}
+
+async function toggleAccount(id, active) {
+  await fetch(`/api/accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active }),
+  });
+}
+
+async function deleteAccount(id) {
+  showConfirmModal({
+    title: 'حذف الحساب',
+    message: 'هل تريد حذف هذا الحساب نهائياً؟',
+    onConfirm: async () => {
+      await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+      showToast('تم حذف الحساب', 'warning');
+      loadAccounts();
+    },
+  });
+}
+
+// ── الكلمات المفتاحية ─────────────────────────────────────────────────────────
+async function loadKeywords() {
+  const data = await fetch('/api/keywords').then(r => r.json());
+  const el = document.getElementById('keywords-list');
+  if (!data.length) {
+    el.innerHTML = '<div class="text-secondary text-sm" style="text-align:center;padding:16px;">لا توجد كلمات مفتاحية — أضف كلمة للبدء</div>';
+    return;
+  }
+  el.innerHTML = data.map(k => `
+    <div class="flex items-center gap-3" style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+      <span class="badge badge-neutral">${k.keyword}</span>
+      ${k.platform ? `<span class="text-secondary text-sm">${k.platform}</span>` : ''}
+      <button class="btn btn-danger btn-sm" style="margin-right:auto;" onclick="deleteKeyword(${k.id})">✕</button>
+    </div>`).join('');
+}
+
+function addKeywordDialog() {
+  showModal({
+    title: '+ إضافة كلمة مفتاحية',
+    body: `
+      <div class="form-group">
+        <label class="form-label">الكلمة المفتاحية</label>
+        <input class="form-control" id="new-kw" placeholder="مثال: سماعات بلوتوث، Sony WH-1000XM5">
+      </div>`,
+    confirmText: 'إضافة',
+    onConfirm: async () => {
+      const keyword = document.getElementById('new-kw').value.trim();
+      if (!keyword) return;
+      await fetch('/api/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword }),
+      });
+      showToast('✓ تم إضافة الكلمة', 'success');
+      loadKeywords();
+    },
+  });
+}
+
+async function deleteKeyword(id) {
+  await fetch(`/api/keywords/${id}`, { method: 'DELETE' });
+  showToast('تم حذف الكلمة', 'warning');
+  loadKeywords();
+}
+
+loadSettings();
+</script>

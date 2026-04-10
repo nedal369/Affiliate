@@ -1,0 +1,207 @@
+<!-- صفحة التحليلات -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">📈 التحليلات</h2>
+    <p class="page-subtitle">بيانات الأداء والنشر</p>
+  </div>
+  <div class="page-actions">
+    <select class="form-control" id="days-filter" onchange="loadAnalytics()" style="width: 140px;">
+      <option value="7">آخر 7 أيام</option>
+      <option value="30" selected>آخر 30 يوماً</option>
+      <option value="90">آخر 90 يوماً</option>
+    </select>
+    <button class="btn btn-secondary" onclick="loadAnalytics()">🔄 تحديث</button>
+  </div>
+</div>
+
+<!-- بطاقات إجمالية -->
+<div class="grid-3 mb-4" id="analytics-summary">
+  <div class="card" style="padding: 20px 24px;">
+    <div class="text-sm text-secondary mb-4">إجمالي المنشورات</div>
+    <div class="font-bold" style="font-size: 28px;" id="a-total-posts">—</div>
+  </div>
+  <div class="card" style="padding: 20px 24px;">
+    <div class="text-sm text-secondary mb-4">إجمالي النقرات</div>
+    <div class="font-bold" style="font-size: 28px;" id="a-total-clicks">—</div>
+  </div>
+  <div class="card" style="padding: 20px 24px;">
+    <div class="text-sm text-secondary mb-4">معدل النشر/اليوم</div>
+    <div class="font-bold" style="font-size: 28px;" id="a-avg-per-day">—</div>
+  </div>
+</div>
+
+<!-- الرسوم البيانية -->
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;" class="mb-4">
+  <!-- رسم بياني خطي -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">📅 النشر اليومي</span></div>
+    <div class="card-body"><canvas id="chart-daily" height="200"></canvas></div>
+  </div>
+  <!-- Pie chart -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">🎯 توزيع المصادر</span></div>
+    <div class="card-body"><canvas id="chart-sources" height="200"></canvas></div>
+  </div>
+</div>
+
+<!-- أداء القنوات + أفضل منتجات -->
+<div class="grid-2 mb-4">
+  <!-- Bar chart -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">📡 أداء القنوات (نقرات)</span></div>
+    <div class="card-body"><canvas id="chart-channels" height="200"></canvas></div>
+  </div>
+  <!-- أفضل منتجات -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">🏆 أفضل 10 منتجات</span></div>
+    <div class="card-body" id="top-products" style="padding: 12px 24px;">
+      <div class="text-secondary text-sm" style="text-align:center;padding:16px;">جاري التحميل...</div>
+    </div>
+  </div>
+</div>
+
+<style>
+#chart-daily, #chart-sources, #chart-channels { max-height: 220px; }
+</style>
+
+<script>
+let charts = {};
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+const CHART_COLORS = {
+  primary: '#0071E3',
+  success: '#34C759',
+  warning: '#FF9500',
+  danger: '#FF3B30',
+  purple: '#AF52DE',
+};
+
+async function loadAnalytics() {
+  const days = document.getElementById('days-filter').value;
+  try {
+    const data = await fetch(`/api/analytics?days=${days}`).then(r => r.json());
+    renderAnalytics(data, Number(days));
+  } catch (e) {
+    showToast('خطأ في تحميل التحليلات', 'error');
+  }
+}
+
+function renderAnalytics(data, days) {
+  const daily = data.daily || [];
+  const sources = data.sources || [];
+  const channels = data.channels || [];
+  const topProducts = data.top_products || [];
+
+  // الإجماليات
+  const totalPosts = daily.reduce((s, d) => s + d.count, 0);
+  const totalClicks = channels.reduce((s, c) => s + c.clicks, 0);
+  document.getElementById('a-total-posts').textContent = totalPosts;
+  document.getElementById('a-total-clicks').textContent = formatNumber(totalClicks);
+  document.getElementById('a-avg-per-day').textContent = (totalPosts / Math.max(days, 1)).toFixed(1);
+
+  // رسم بياني خطي - النشر اليومي
+  destroyChart('daily');
+  const dailyCtx = document.getElementById('chart-daily').getContext('2d');
+  charts['daily'] = new Chart(dailyCtx, {
+    type: 'line',
+    data: {
+      labels: daily.map(d => new Date(d.date + 'T12:00:00').toLocaleDateString('ar', { month: 'short', day: 'numeric' })),
+      datasets: [{
+        label: 'المنشورات',
+        data: daily.map(d => d.count),
+        borderColor: CHART_COLORS.primary,
+        backgroundColor: 'rgba(0,113,227,0.08)',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: CHART_COLORS.primary,
+        fill: true,
+        tension: 0.4,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Plus Jakarta Sans', size: 11 } } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Plus Jakarta Sans', size: 11 } } },
+      },
+    },
+  });
+
+  // Pie - المصادر
+  destroyChart('sources');
+  const sourceLabels = { tiktok: '🎵 TikTok', instagram: '📸 Instagram', keyword: '🔍 كلمات', unknown: '❓ أخرى' };
+  const sourceColors = [CHART_COLORS.primary, CHART_COLORS.warning, CHART_COLORS.success, '#8E8E93'];
+  const sourcesCtx = document.getElementById('chart-sources').getContext('2d');
+  charts['sources'] = new Chart(sourcesCtx, {
+    type: 'doughnut',
+    data: {
+      labels: sources.map(s => sourceLabels[s.source] || s.source),
+      datasets: [{
+        data: sources.map(s => s.count),
+        backgroundColor: sourceColors.slice(0, sources.length),
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { family: 'Plus Jakarta Sans', size: 11 }, padding: 12 } },
+      },
+    },
+  });
+
+  // Bar - القنوات
+  destroyChart('channels');
+  const channelLabels = { telegram: '📨 Telegram', whatsapp: '💬 WhatsApp', x: '𝕏 X' };
+  const channelsCtx = document.getElementById('chart-channels').getContext('2d');
+  charts['channels'] = new Chart(channelsCtx, {
+    type: 'bar',
+    data: {
+      labels: channels.map(c => channelLabels[c.channel] || c.channel),
+      datasets: [{
+        label: 'النقرات',
+        data: channels.map(c => c.clicks),
+        backgroundColor: [CHART_COLORS.primary, CHART_COLORS.success, '#1D1D1F'],
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Plus Jakarta Sans' } } },
+        y: { beginAtZero: true, ticks: { font: { family: 'Plus Jakarta Sans', size: 11 } } },
+      },
+    },
+  });
+
+  // أفضل منتجات
+  const topEl = document.getElementById('top-products');
+  if (!topProducts.length) {
+    topEl.innerHTML = '<div class="text-secondary text-sm" style="text-align:center;padding:24px;">لا توجد بيانات نقرات بعد</div>';
+  } else {
+    const maxClicks = Math.max(...topProducts.map(p => p.clicks), 1);
+    topEl.innerHTML = topProducts.map((p, i) => `
+      <div style="padding: 8px 0; ${i < topProducts.length - 1 ? 'border-bottom: 1px solid var(--border);' : ''}">
+        <div class="flex items-center gap-2 mb-4">
+          <span style="font-size:11px;color:var(--text-tertiary);width:16px;text-align:center;">${i+1}</span>
+          <span class="truncate" style="font-size:12px;flex:1;" title="${p.title}">${p.title}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--accent);">${formatNumber(p.clicks)}</span>
+        </div>
+        <div style="height:3px;background:var(--surface);border-radius:3px;margin-right:24px;">
+          <div style="height:100%;width:${(p.clicks/maxClicks*100).toFixed(0)}%;background:var(--accent);border-radius:3px;"></div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+// Init
+loadAnalytics();
+</script>

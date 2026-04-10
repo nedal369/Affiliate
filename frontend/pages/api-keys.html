@@ -1,0 +1,480 @@
+<!-- صفحة مفاتيح API -->
+<div class="page-header">
+  <div>
+    <h2 class="page-title">🔑 مفاتيح API</h2>
+    <p class="page-subtitle">جميع المفاتيح مشفّرة في قاعدة البيانات — لا تُحفظ في ملفات</p>
+  </div>
+</div>
+
+<div style="max-width: 720px;">
+
+  <!-- ══ Anthropic ══ -->
+  <div class="card mb-4" id="card-anthropic">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🤖</span>
+        <div>
+          <div class="card-title">Anthropic (Claude)</div>
+          <div class="text-sm text-secondary">claude-opus-4-5 / claude-sonnet-4-5 / claude-haiku-4-5</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-anthropic">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-anthropic" placeholder="sk-ant-api03-..." />
+            <button onclick="toggleVisibility('key-anthropic', 'eye-anthropic')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-anthropic">👁</button>
+          </div>
+          <button class="btn btn-primary" onclick="saveKey('anthropic', 'key-anthropic')">حفظ</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('anthropic')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ OpenAI ══ -->
+  <div class="card mb-4" id="card-openai">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🧠</span>
+        <div>
+          <div class="card-title">OpenAI (GPT)</div>
+          <div class="text-sm text-secondary">gpt-4o / gpt-4o-mini / gpt-4-turbo</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-openai">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-openai" placeholder="sk-..." />
+            <button onclick="toggleVisibility('key-openai', 'eye-openai')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-openai">👁</button>
+          </div>
+          <button class="btn btn-primary" onclick="saveKey('openai', 'key-openai')">حفظ</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('openai')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ Google Gemini ══ -->
+  <div class="card mb-4" id="card-google">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🔍</span>
+        <div>
+          <div class="card-title">Google (Gemini)</div>
+          <div class="text-sm text-secondary">gemini-1.5-pro / gemini-1.5-flash</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-google">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-google" placeholder="AIza..." />
+            <button onclick="toggleVisibility('key-google', 'eye-google')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-google">👁</button>
+          </div>
+          <button class="btn btn-primary" onclick="saveKey('google', 'key-google')">حفظ</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('google')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ Groq ══ -->
+  <div class="card mb-4" id="card-groq">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">⚡</span>
+        <div>
+          <div class="card-title">Groq (Llama / Mixtral)</div>
+          <div class="text-sm text-secondary">llama-3.3-70b-versatile / mixtral-8x7b-32768</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-groq">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-groq" placeholder="gsk_..." />
+            <button onclick="toggleVisibility('key-groq', 'eye-groq')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-groq">👁</button>
+          </div>
+          <button class="btn btn-primary" onclick="saveKey('groq', 'key-groq')">حفظ</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('groq')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ Amazon ══ -->
+  <div class="card mb-4" id="card-amazon">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">📦</span>
+        <div>
+          <div class="card-title">Amazon Associates</div>
+          <div class="text-sm text-secondary">PA API v5 — البحث في المنتجات</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-amazon_access_key">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Access Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-amazon_access_key" placeholder="AKIA..." />
+            <button onclick="toggleVisibility('key-amazon_access_key', 'eye-amazon_access_key')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-amazon_access_key">👁</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Secret Key</label>
+        <div style="position: relative;">
+          <input type="password" class="form-control" id="key-amazon_secret_key" placeholder="••••••••" />
+          <button onclick="toggleVisibility('key-amazon_secret_key', 'eye-amazon_secret_key')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+            id="eye-amazon_secret_key">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Associate Tag</label>
+        <input type="text" class="form-control" id="key-amazon_associate_tag" placeholder="yourname-sa-21" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">السوق</label>
+        <select class="form-control" id="amazon-marketplace">
+          <option value="SA">🇸🇦 السعودية (amazon.sa)</option>
+          <option value="AE">🇦🇪 الإمارات (amazon.ae)</option>
+          <option value="EG">🇪🇬 مصر (amazon.eg)</option>
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" onclick="saveAmazonKeys()">حفظ الكل</button>
+        <button class="btn btn-secondary btn-sm" onclick="testKey('amazon_access_key')">🔌 اختبار الاتصال</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Apify ══ -->
+  <div class="card mb-4" id="card-apify">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🕷️</span>
+        <div>
+          <div class="card-title">Apify (TikTok + Instagram)</div>
+          <div class="text-sm text-secondary">جلب المنشورات الرائجة</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-apify">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">API Token</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-apify" placeholder="apify_api_..." />
+            <button onclick="toggleVisibility('key-apify', 'eye-apify')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-apify">👁</button>
+          </div>
+          <button class="btn btn-primary" onclick="saveKey('apify', 'key-apify')">حفظ</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('apify')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ Telegram ══ -->
+  <div class="card mb-4" id="card-telegram">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">📨</span>
+        <div>
+          <div class="card-title">Telegram Bot</div>
+          <div class="text-sm text-secondary">النشر على القناة</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-telegram_token">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Bot Token</label>
+        <div style="position: relative;">
+          <input type="password" class="form-control" id="key-telegram_token" placeholder="1234567890:AAF..." />
+          <button onclick="toggleVisibility('key-telegram_token', 'eye-telegram_token')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+            id="eye-telegram_token">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Channel ID</label>
+        <input type="text" class="form-control" id="key-telegram_channel_id" placeholder="@channel_name أو -100123456789" />
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" onclick="saveTelegramKeys()">حفظ</button>
+        <button class="btn btn-secondary btn-sm" onclick="testKey('telegram_token')">📤 إرسال رسالة اختبار</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ WhatsApp (UltraMsg) ══ -->
+  <div class="card mb-4" id="card-whatsapp">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">💬</span>
+        <div>
+          <div class="card-title">WhatsApp (UltraMsg)</div>
+          <div class="text-sm text-secondary">النشر على واتساب</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-ultramsg_instance">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Instance ID</label>
+        <input type="text" class="form-control" id="key-ultramsg_instance" placeholder="instance12345" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Token</label>
+        <div style="position: relative;">
+          <input type="password" class="form-control" id="key-ultramsg_token" placeholder="••••••••••••" />
+          <button onclick="toggleVisibility('key-ultramsg_token', 'eye-ultramsg_token')"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+            id="eye-ultramsg_token">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">رقم WhatsApp (مع كود الدولة)</label>
+        <input type="text" class="form-control" id="key-whatsapp_number" placeholder="+966501234567" />
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" onclick="saveWhatsAppKeys()">حفظ</button>
+        <button class="btn btn-secondary btn-sm" onclick="testKey('ultramsg_instance')">🔌 اختبار الاتصال</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ X (Twitter) ══ -->
+  <div class="card mb-4" id="card-x">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px; font-weight: 900;">𝕏</span>
+        <div>
+          <div class="card-title">منصة X (Twitter)</div>
+          <div class="text-sm text-secondary">X API v2 — النشر التغريدات</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-x_api_key">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input type="password" class="form-control" id="key-x_api_key" placeholder="••••••••••••" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Secret</label>
+          <input type="password" class="form-control" id="key-x_api_secret" placeholder="••••••••••••" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Token</label>
+          <input type="password" class="form-control" id="key-x_access_token" placeholder="••••••••••••" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Secret</label>
+          <input type="password" class="form-control" id="key-x_access_secret" placeholder="••••••••••••" />
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" onclick="saveXKeys()">حفظ</button>
+        <button class="btn btn-secondary btn-sm" onclick="testKey('x_api_key')">🔌 اختبار الاتصال</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- تحذير -->
+  <div class="card" style="background: rgba(255,149,0,0.06); border-color: rgba(255,149,0,0.2);">
+    <div class="card-body">
+      <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.8;">
+        ⚠️ جميع المفاتيح مشفّرة بـ Fernet في قاعدة البيانات<br>
+        ⚠️ لا تُرسَل المفاتيح كاملة للواجهة — يُعرض فقط آخر 4 أرقام<br>
+        ⚠️ احتفظ بنسخة احتياطية من مفاتيحك في مكان آمن
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── تحميل المفاتيح المحفوظة ─────────────────────────────────────────────────
+async function loadKeys() {
+  try {
+    const data = await fetch('/api/keys').then(r => r.json());
+
+    const statusMap = {
+      anthropic:         'status-anthropic',
+      openai:            'status-openai',
+      google:            'status-google',
+      groq:              'status-groq',
+      amazon_access_key: 'status-amazon_access_key',
+      apify:             'status-apify',
+      telegram_token:    'status-telegram_token',
+      ultramsg_instance: 'status-ultramsg_instance',
+      x_api_key:         'status-x_api_key',
+    };
+
+    for (const [service, info] of Object.entries(data)) {
+      const el = document.getElementById(statusMap[service]);
+      if (!el) continue;
+      if (info.has_key) {
+        el.className = 'badge badge-success';
+        el.textContent = '● متصل';
+        // عرض القيمة المخفية في الـ input
+        const input = document.getElementById(`key-${service}`);
+        if (input && info.masked) input.placeholder = info.masked;
+      } else {
+        el.className = 'badge badge-neutral';
+        el.textContent = '○ غير متصل';
+      }
+    }
+
+    // Amazon marketplace
+    const mktResp = await fetch('/api/settings').then(r => r.json());
+    const mktEl = document.getElementById('amazon-marketplace');
+    if (mktEl && mktResp.amazon_marketplace) mktEl.value = mktResp.amazon_marketplace;
+
+  } catch (e) {
+    console.error('خطأ في جلب المفاتيح:', e);
+  }
+}
+
+// ── حفظ مفتاح واحد ─────────────────────────────────────────────────────────
+async function saveKey(service, inputId) {
+  const input = document.getElementById(inputId);
+  const key = input?.value?.trim();
+  if (!key) { showToast('أدخل المفتاح أولاً', 'warning'); return; }
+
+  try {
+    const resp = await fetch('/api/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service, key }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      showToast(`✓ تم حفظ مفتاح ${service}`, 'success');
+      input.value = '';
+      await loadKeys();
+    }
+  } catch (e) {
+    showToast('خطأ في الحفظ', 'error');
+  }
+}
+
+// ── حفظ متعدد ──────────────────────────────────────────────────────────────
+async function saveAmazonKeys() {
+  const keys = {
+    amazon_access_key:   document.getElementById('key-amazon_access_key')?.value?.trim(),
+    amazon_secret_key:   document.getElementById('key-amazon_secret_key')?.value?.trim(),
+    amazon_associate_tag: document.getElementById('key-amazon_associate_tag')?.value?.trim(),
+  };
+  const marketplace = document.getElementById('amazon-marketplace')?.value;
+
+  for (const [service, key] of Object.entries(keys)) {
+    if (key) {
+      await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service, key }),
+      });
+    }
+  }
+  if (marketplace) {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amazon_marketplace: marketplace }),
+    });
+  }
+  showToast('✓ تم حفظ بيانات Amazon', 'success');
+  await loadKeys();
+}
+
+async function saveTelegramKeys() {
+  const token = document.getElementById('key-telegram_token')?.value?.trim();
+  const channel = document.getElementById('key-telegram_channel_id')?.value?.trim();
+  if (token) await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({service:'telegram_token', key: token}) });
+  if (channel) await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({service:'telegram_channel_id', key: channel}) });
+  showToast('✓ تم حفظ بيانات Telegram', 'success');
+  await loadKeys();
+}
+
+async function saveWhatsAppKeys() {
+  const fields = ['ultramsg_instance', 'ultramsg_token', 'whatsapp_number'];
+  for (const f of fields) {
+    const val = document.getElementById(`key-${f}`)?.value?.trim();
+    if (val) await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({service: f, key: val}) });
+  }
+  showToast('✓ تم حفظ بيانات WhatsApp', 'success');
+  await loadKeys();
+}
+
+async function saveXKeys() {
+  const fields = ['x_api_key', 'x_api_secret', 'x_access_token', 'x_access_secret'];
+  for (const f of fields) {
+    const val = document.getElementById(`key-${f}`)?.value?.trim();
+    if (val) await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({service: f, key: val}) });
+  }
+  showToast('✓ تم حفظ بيانات X', 'success');
+  await loadKeys();
+}
+
+// ── اختبار الاتصال ─────────────────────────────────────────────────────────
+async function testKey(service) {
+  showToast(`جاري اختبار ${service}...`, 'info');
+  try {
+    const resp = await fetch(`/api/keys/test/${service}`, { method: 'POST' });
+    const data = await resp.json();
+    showToast(data.message, data.success ? 'success' : 'error', 5000);
+  } catch (e) {
+    showToast('خطأ في الاختبار: ' + e.message, 'error');
+  }
+}
+
+// ── إظهار/إخفاء المفتاح ─────────────────────────────────────────────────────
+function toggleVisibility(inputId, btnId) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    if (btn) btn.textContent = '👁';
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+loadKeys();
+</script>

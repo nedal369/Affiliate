@@ -1,0 +1,182 @@
+<!-- صفحة سجل النشر -->
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">📋 سجل النشر</h2>
+    <p class="page-subtitle" id="history-total">جاري التحميل...</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="exportCSV()">⬇ تصدير CSV</button>
+    <button class="btn btn-secondary" onclick="loadHistory()">🔄 تحديث</button>
+  </div>
+</div>
+
+<!-- فلاتر -->
+<div class="card mb-4">
+  <div class="card-body" style="padding: 16px 20px;">
+    <div class="flex gap-3 items-center">
+      <div>
+        <label class="form-label">المنصة</label>
+        <select class="form-control" id="filter-channel" onchange="loadHistory()">
+          <option value="">الكل</option>
+          <option value="telegram">📨 Telegram</option>
+          <option value="whatsapp">💬 WhatsApp</option>
+          <option value="x">𝕏 منصة X</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">الحالة</label>
+        <select class="form-control" id="filter-status" onchange="loadHistory()">
+          <option value="">الكل</option>
+          <option value="published">منشور</option>
+          <option value="failed">فشل</option>
+          <option value="rejected">مرفوض</option>
+        </select>
+      </div>
+      <div style="margin-top: 18px;">
+        <button class="btn btn-secondary" onclick="resetFilters()">إعادة تعيين</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- جدول السجل -->
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>المنتج</th>
+          <th>المصدر</th>
+          <th>الحالة</th>
+          <th>القنوات</th>
+          <th>النقرات</th>
+          <th>الخصم</th>
+          <th>التاريخ</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody">
+        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-tertiary);">جاري التحميل...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div style="padding: 16px 24px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+    <div class="text-sm text-secondary" id="pagination-info">—</div>
+    <div class="flex gap-2">
+      <button class="btn btn-secondary btn-sm" id="btn-prev" onclick="prevPage()" disabled>→ السابق</button>
+      <span class="text-sm" id="page-indicator" style="padding: 6px 12px; background: var(--surface); border-radius: var(--radius-sm);">1</span>
+      <button class="btn btn-secondary btn-sm" id="btn-next" onclick="nextPage()">التالي ←</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let historyPage = 1;
+let historyTotal = 0;
+const PER_PAGE = 20;
+
+async function loadHistory() {
+  const channel = document.getElementById('filter-channel')?.value || '';
+  const status  = document.getElementById('filter-status')?.value  || '';
+
+  const params = new URLSearchParams({ page: historyPage, per_page: PER_PAGE });
+  if (channel) params.append('channel', channel);
+  if (status)  params.append('status',  status);
+
+  const tbody = document.getElementById('history-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;"><div class="skeleton" style="height:20px;width:80%;margin:auto;"></div></td></tr>';
+
+  try {
+    const data = await fetch(`/api/history?${params}`).then(r => r.json());
+    historyTotal = data.total || 0;
+
+    document.getElementById('history-total').textContent = `${historyTotal} سجل إجمالاً`;
+    document.getElementById('pagination-info').textContent = `صفحة ${historyPage} من ${Math.max(1, Math.ceil(historyTotal / PER_PAGE))}`;
+    document.getElementById('page-indicator').textContent = historyPage;
+    document.getElementById('btn-prev').disabled = historyPage === 1;
+    document.getElementById('btn-next').disabled = historyPage >= Math.ceil(historyTotal / PER_PAGE);
+
+    if (!data.items?.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:48px;color:var(--text-tertiary);">لا توجد سجلات</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.items.map(p => {
+      const channels = p.channels_info || {};
+      const channelsBadges = Object.entries(channels).map(([ch, info]) =>
+        `<span class="badge ${info.success ? 'badge-success' : 'badge-danger'}" style="margin-left:4px;">${channelLabel(ch)}</span>`
+      ).join('');
+
+      return `
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              ${p.image_url ? `<img src="${p.image_url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : ''}
+              <span class="truncate" style="max-width:180px;" title="${p.title}">${p.title_ar || p.title}</span>
+            </div>
+          </td>
+          <td>${sourceBadge(p.source)}</td>
+          <td>${statusBadge(p.status)}</td>
+          <td>${channelsBadges || '<span class="text-secondary text-sm">—</span>'}</td>
+          <td><span style="font-weight:600;">${formatNumber(p.total_clicks || 0)}</span></td>
+          <td><span style="color:var(--success);font-weight:600;">${p.discount_pct || 0}%</span></td>
+          <td class="text-secondary text-sm">${formatDate(p.published_at || p.created_at)}</td>
+        </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--danger);">خطأ في التحميل: ${e.message}</td></tr>`;
+  }
+}
+
+function channelLabel(ch) {
+  const map = { telegram: '📨', whatsapp: '💬', x: '𝕏' };
+  return map[ch] || ch;
+}
+
+function prevPage() {
+  if (historyPage > 1) { historyPage--; loadHistory(); }
+}
+function nextPage() {
+  if (historyPage < Math.ceil(historyTotal / PER_PAGE)) { historyPage++; loadHistory(); }
+}
+function resetFilters() {
+  document.getElementById('filter-channel').value = '';
+  document.getElementById('filter-status').value = '';
+  historyPage = 1;
+  loadHistory();
+}
+
+async function exportCSV() {
+  try {
+    const data = await fetch('/api/history?per_page=1000').then(r => r.json());
+    const items = data.items || [];
+    const headers = ['العنوان', 'المصدر', 'الحالة', 'السعر', 'الخصم%', 'النقرات', 'التاريخ', 'الرابط'];
+    const rows = items.map(p => [
+      `"${(p.title_ar || p.title).replace(/"/g, '""')}"`,
+      p.source || '',
+      p.status || '',
+      p.price_current || 0,
+      p.discount_pct || 0,
+      p.total_clicks || 0,
+      p.published_at ? new Date(p.published_at).toLocaleDateString('ar') : '',
+      `"${p.affiliate_url || ''}"`,
+    ].join(','));
+
+    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `affiliate_history_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✓ تم تصدير السجل', 'success');
+  } catch (e) {
+    showToast('خطأ في التصدير', 'error');
+  }
+}
+
+loadHistory();
+</script>

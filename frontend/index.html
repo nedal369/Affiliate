@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>نظام الإحالة الذكي</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" />
+  <style>
+    /* ── CSS Reset & Variables ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:              #FFFFFF;
+      --surface:         #F5F5F7;
+      --card:            #FFFFFF;
+      --border:          rgba(0,0,0,0.08);
+      --text-primary:    #1D1D1F;
+      --text-secondary:  #6E6E73;
+      --text-tertiary:   #AEAEB2;
+      --accent:          #0071E3;
+      --accent-hover:    #0077ED;
+      --success:         #34C759;
+      --warning:         #FF9500;
+      --danger:          #FF3B30;
+      --radius-sm:       8px;
+      --radius-md:       12px;
+      --radius-lg:       16px;
+      --shadow-sm:       0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:       0 4px 16px rgba(0,0,0,0.08);
+      --shadow-lg:       0 8px 32px rgba(0,0,0,0.12);
+      --sidebar-width:   220px;
+      --font:            'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--card);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 0;
+      z-index: 10;
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .sidebar-logo h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .sidebar-logo span {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
+
+    .nav-section {
+      padding: 4px 12px;
+      flex: 1;
+    }
+    .nav-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 12px 8px 6px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--surface); color: var(--text-primary); }
+    .nav-item.active {
+      background: rgba(0,113,227,0.08);
+      color: var(--accent);
+    }
+    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .nav-badge {
+      margin-right: auto;
+      background: var(--danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    /* ── Sidebar Footer ─────────────────────────────────────────────────────── */
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .system-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 3px rgba(52,199,89,0.2);
+    }
+    .status-dot.offline { background: var(--danger); box-shadow: 0 0 0 3px rgba(255,59,48,0.2); }
+    .status-dot.online { animation: pulse-green 2s infinite; }
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(52,199,89,0.2); }
+      50% { box-shadow: 0 0 0 6px rgba(52,199,89,0.1); }
+    }
+    .status-label { font-size: 12px; color: var(--text-secondary); }
+    .btn-toggle {
+      width: 100%;
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: var(--font);
+    }
+    .btn-toggle:hover { background: var(--text-primary); color: #fff; border-color: var(--text-primary); }
+
+    /* ── Main Content ────────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Page Container ─────────────────────────────────────────────────────── */
+    #page-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+    }
+
+    /* ── Page Header ────────────────────────────────────────────────────────── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .page-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .page-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Cards ──────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+    }
+    .card-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title { font-size: 15px; font-weight: 600; }
+    .card-body { padding: 20px 24px; }
+
+    /* ── Buttons ────────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+      font-family: var(--font);
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: #e8e8ed; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-warning { background: var(--warning); color: #fff; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Badges ─────────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-success { background: rgba(52,199,89,0.12); color: var(--success); }
+    .badge-danger  { background: rgba(255,59,48,0.12);  color: var(--danger); }
+    .badge-warning { background: rgba(255,149,0,0.12);  color: var(--warning); }
+    .badge-info    { background: rgba(0,113,227,0.10);  color: var(--accent); }
+    .badge-neutral { background: var(--surface);         color: var(--text-secondary); }
+
+    /* ── Toast ──────────────────────────────────────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+    }
+    .toast {
+      background: var(--text-primary);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      animation: toast-in 0.3s ease;
+      max-width: 320px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.success { background: var(--success); }
+    .toast.error   { background: var(--danger); }
+    .toast.warning { background: var(--warning); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Modal ──────────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fade-in 0.2s ease;
+    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .modal {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      width: 90%;
+      max-width: 560px;
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: modal-in 0.25s ease;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.95) translateY(8px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--text-tertiary);
+      line-height: 1;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+    .modal-close:hover { background: var(--surface); color: var(--text-primary); }
+    .modal-body { padding: 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* ── Form Elements ──────────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-control {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: var(--font);
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    .form-control:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,113,227,0.1); }
+    textarea.form-control { resize: vertical; min-height: 120px; }
+    select.form-control { cursor: pointer; }
+
+    /* ── Toggle Switch ──────────────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+    .toggle-label { font-size: 13px; color: var(--text-primary); }
+    .toggle-desc { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #ddd;
+      border-radius: 13px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 20px; height: 20px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    /* ── Loading Skeleton ────────────────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius-sm);
+    }
+    @keyframes shimmer {
+      from { background-position: 200% 0; }
+      to   { background-position: -200% 0; }
+    }
+
+    /* ── Stars ──────────────────────────────────────────────────────────────── */
+    .stars { color: #FF9500; font-size: 13px; }
+
+    /* ── Table ──────────────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: right;
+      padding: 10px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    td {
+      padding: 14px 16px;
+      font-size: 13px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(0,0,0,0.02); }
+
+    /* ── Responsive ─────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      #sidebar { display: none; }
+      #page-content { padding: 16px; }
+    }
+
+    /* ── Utility ─────────────────────────────────────────────────────────────── */
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 8px; }
+    .gap-3 { gap: 12px; }
+    .gap-4 { gap: 16px; }
+    .mt-4 { margin-top: 16px; }
+    .mt-6 { margin-top: 24px; }
+    .mb-4 { margin-bottom: 16px; }
+    .text-sm { font-size: 12px; }
+    .text-secondary { color: var(--text-secondary); }
+    .text-success { color: var(--success); }
+    .text-danger { color: var(--danger); }
+    .text-warning { color: var(--warning); }
+    .font-bold { font-weight: 700; }
+    .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .w-full { width: 100%; }
+    .hidden { display: none !important; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <h1>🔗 نظام الإحالة</h1>
+      <span>Affiliate Automation</span>
+    </div>
+
+    <nav class="nav-section">
+      <div class="nav-label">الرئيسية</div>
+      <a class="nav-item active" data-page="dashboard" href="#">
+        <span class="nav-icon">📊</span> لوحة التحكم
+      </a>
+      <a class="nav-item" data-page="queue" href="#">
+        <span class="nav-icon">⏳</span> قائمة الانتظار
+        <span class="nav-badge hidden" id="queue-badge">0</span>
+      </a>
+      <a class="nav-item" data-page="history" href="#">
+        <span class="nav-icon">📋</span> سجل النشر
+      </a>
+
+      <div class="nav-label">الإدارة</div>
+      <a class="nav-item" data-page="settings" href="#">
+        <span class="nav-icon">⚙️</span> الإعدادات
+      </a>
+      <a class="nav-item" data-page="api-keys" href="#">
+        <span class="nav-icon">🔑</span> مفاتيح API
+      </a>
+      <a class="nav-item" data-page="analytics" href="#">
+        <span class="nav-icon">📈</span> التحليلات
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="system-status">
+        <div class="status-dot online" id="system-dot"></div>
+        <span class="status-label" id="system-label">النظام يعمل</span>
+      </div>
+      <button class="btn-toggle" id="btn-toggle-system" onclick="toggleSystem()">إيقاف النظام</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="page-content">
+      <!-- يُحمَّل هنا المحتوى ديناميكياً -->
+      <div class="flex items-center justify-between" style="height: 60vh;">
+        <div style="text-align: center; width: 100%;">
+          <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+          <p class="text-secondary">جاري التحميل...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Modal Container -->
+<div id="modal-container"></div>
+
+<!-- Scripts -->
+<script src="/static/components/toast.js"></script>
+<script src="/static/components/modal.js"></script>
+<script src="/static/components/sidebar.js"></script>
+
+<!-- Page Scripts (lazy loaded) -->
+<script>
+  // ── Router ──────────────────────────────────────────────────────────────────
+  const PAGES = {
+    'dashboard':  '/static/pages/dashboard.html',
+    'queue':      '/static/pages/queue.html',
+    'history':    '/static/pages/history.html',
+    'settings':   '/static/pages/settings.html',
+    'api-keys':   '/static/pages/api-keys.html',
+    'analytics':  '/static/pages/analytics.html',
+  };
+
+  let currentPage = '';
+
+  async function navigateTo(page) {
+    if (currentPage === page) return;
+    currentPage = page;
+
+    // تحديث الـ sidebar
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.page === page);
+    });
+
+    const container = document.getElementById('page-content');
+    container.innerHTML = `
+      <div style="padding: 48px; text-align: center;">
+        <div class="skeleton" style="height: 32px; width: 200px; margin: 0 auto 24px;"></div>
+        <div class="skeleton" style="height: 120px; width: 100%; margin-bottom: 16px;"></div>
+        <div class="skeleton" style="height: 120px; width: 100%;"></div>
+      </div>`;
+
+    try {
+      const resp = await fetch(PAGES[page]);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const html = await resp.text();
+      container.innerHTML = html;
+
+      // تشغيل السكريبتات المضمّنة
+      container.querySelectorAll('script').forEach(oldScript => {
+        const newScript = document.createElement('script');
+        newScript.textContent = oldScript.textContent;
+        oldScript.parentNode.replaceChild(newScript, oldScript);
+      });
+    } catch (err) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 64px;">
+          <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+          <h2 style="color: var(--danger); margin-bottom: 8px;">تعذّر تحميل الصفحة</h2>
+          <p class="text-secondary">${err.message}</p>
+        </div>`;
+    }
+  }
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  document.addEventListener('click', e => {
+    const link = e.target.closest('[data-page]');
+    if (link) {
+      e.preventDefault();
+      navigateTo(link.dataset.page);
+    }
+  });
+
+  // ── System Toggle ──────────────────────────────────────────────────────────
+  async function toggleSystem() {
+    try {
+      const resp = await fetch('/api/system/toggle', { method: 'POST' });
+      const data = await resp.json();
+      updateSystemStatus(data.system_enabled);
+      showToast(data.system_enabled ? 'النظام يعمل الآن ✓' : 'تم إيقاف النظام', data.system_enabled ? 'success' : 'warning');
+    } catch (e) {
+      showToast('خطأ في تغيير حالة النظام', 'error');
+    }
+  }
+
+  function updateSystemStatus(enabled) {
+    const dot = document.getElementById('system-dot');
+    const label = document.getElementById('system-label');
+    const btn = document.getElementById('btn-toggle-system');
+    if (enabled) {
+      dot.className = 'status-dot online';
+      label.textContent = 'النظام يعمل';
+      btn.textContent = 'إيقاف النظام';
+    } else {
+      dot.className = 'status-dot offline';
+      label.textContent = 'النظام متوقف';
+      btn.textContent = 'تشغيل النظام';
+    }
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  async function init() {
+    // جلب الحالة
+    try {
+      const [stats, settings] = await Promise.all([
+        fetch('/api/stats').then(r => r.json()),
+        fetch('/api/settings').then(r => r.json()),
+      ]);
+      updateSystemStatus(settings.system_enabled ?? true);
+
+      // تحديث badge
+      if (stats.pending_count > 0) {
+        const badge = document.getElementById('queue-badge');
+        badge.textContent = stats.pending_count;
+        badge.classList.remove('hidden');
+      }
+    } catch (e) { /* تجاهل */ }
+
+    // تحميل الصفحة الافتراضية
+    navigateTo('dashboard');
+
+    // تحديث دوري كل دقيقة
+    setInterval(async () => {
+      try {
+        const stats = await fetch('/api/stats').then(r => r.json());
+        if (stats.pending_count > 0) {
+          const badge = document.getElementById('queue-badge');
+          badge.textContent = stats.pending_count;
+          badge.classList.remove('hidden');
+        }
+      } catch (e) {}
+    }, 60000);
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!-- صفحة قائمة الانتظار -->
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">⏳ قائمة الانتظار</h2>
+    <p class="page-subtitle" id="queue-count">جاري التحميل...</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="loadQueue()">🔄 تحديث</button>
+    <button class="btn btn-success" onclick="approveAll()" id="btn-approve-all">✓ موافقة على الكل</button>
+  </div>
+</div>
+
+<!-- حاوية البطاقات -->
+<div id="queue-list">
+  <!-- يُملأ ديناميكياً -->
+  <div style="text-align:center;padding:64px 0;color:var(--text-tertiary);">
+    <div style="font-size:48px;margin-bottom:16px;">⏳</div>
+    <p>جاري التحميل...</p>
+  </div>
+</div>
+
+<style>
+.product-card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.product-card:hover { box-shadow: var(--shadow-md); }
+
+.product-card-header {
+  display: flex;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  align-items: flex-start;
+}
+.product-thumb {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.product-thumb-placeholder {
+  width: 80px;
+  height: 80px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.product-info { flex: 1; }
+.product-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.product-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.meta-item { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.price-block { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.price-current { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.price-original { font-size: 13px; color: var(--text-tertiary); text-decoration: line-through; }
+.discount-tag { background: rgba(52,199,89,0.12); color: var(--success); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+
+.product-content {
+  padding: 0 24px 16px;
+  border-top: 1px solid var(--border);
+  margin: 0 24px;
+}
+.content-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin: 12px 0 6px; }
+.content-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  background: var(--surface);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.product-actions {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.model-tag { margin-right: auto; font-size: 11px; color: var(--text-tertiary); }
+</style>
+
+<script>
+let queueData = [];
+
+async function loadQueue() {
+  const list = document.getElementById('queue-list');
+  list.innerHTML = '<div style="text-align:center;padding:64px 0;"><div class="skeleton" style="height:120px;margin-bottom:16px;"></div><div class="skeleton" style="height:120px;"></div></div>';
+
+  try {
+    queueData = await fetch('/api/queue').then(r => r.json());
+    renderQueue();
+    const count = queueData.length;
+    document.getElementById('queue-count').textContent = count > 0
+      ? `${count} منتج بانتظار الموافقة`
+      : 'لا توجد منتجات بانتظار الموافقة';
+    document.getElementById('btn-approve-all').disabled = count === 0;
+    updateQueueBadge(count);
+  } catch (e) {
+    list.innerHTML = '<div style="text-align:center;padding:64px;color:var(--danger);">خطأ في تحميل القائمة</div>';
+  }
+}
+
+function renderQueue() {
+  const list = document.getElementById('queue-list');
+  if (!queueData.length) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:80px 0;color:var(--text-tertiary);">
+        <div style="font-size:56px;margin-bottom:16px;">✅</div>
+        <h3 style="font-weight:600;color:var(--text-secondary);margin-bottom:8px;">قائمة الانتظار فارغة</h3>
+        <p>سيُضاف المنتجات الجديدة تلقائياً في الدورة القادمة</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = queueData.map(p => `
+    <div class="product-card" id="product-${p.id}">
+      <div class="product-card-header">
+        ${p.image_url
+          ? `<img class="product-thumb" src="${p.image_url}" alt="صورة المنتج" onerror="this.outerHTML='<div class=product-thumb-placeholder>📦</div>'">`
+          : '<div class="product-thumb-placeholder">📦</div>'}
+        <div class="product-info">
+          <div class="product-title">${p.title_ar || p.title}</div>
+          ${p.title_ar && p.title !== p.title_ar ? `<div class="text-sm text-secondary">${p.title}</div>` : ''}
+          <div class="product-meta">
+            <span class="meta-item">📍 ${sourceBadge(p.source)}</span>
+            ${p.source_account ? `<span class="meta-item">👤 ${p.source_account}</span>` : ''}
+            ${p.source_views ? `<span class="meta-item">👁 ${formatNumber(p.source_views)} مشاهدة</span>` : ''}
+            ${p.rating ? `<span class="meta-item">${renderStars(p.rating)} (${formatNumber(p.rating_count)})</span>` : ''}
+          </div>
+          <div class="price-block">
+            <span class="price-current">${p.price_current?.toFixed(2)} ريال</span>
+            ${p.price_original > p.price_current ? `<span class="price-original">${p.price_original?.toFixed(2)}</span>` : ''}
+            ${p.discount_pct > 0 ? `<span class="discount-tag">خصم ${p.discount_pct}%</span>` : ''}
+          </div>
+        </div>
+        ${p.affiliate_url ? `<a href="${p.affiliate_url}" target="_blank" class="btn btn-secondary btn-sm">🔗 أمازون</a>` : ''}
+      </div>
+
+      <div class="product-content">
+        <div class="content-label">📝 محتوى النشر المقترح</div>
+        <div class="content-text" id="content-${p.id}">${p.ai_content || 'لا يوجد محتوى مولّد'}</div>
+      </div>
+
+      <div class="product-actions">
+        <button class="btn btn-success" onclick="approveProduct(${p.id})">✓ موافقة ونشر</button>
+        <button class="btn btn-secondary" onclick="editProduct(${p.id})">✎ تعديل</button>
+        <button class="btn btn-danger" onclick="rejectProduct(${p.id})">✕ رفض</button>
+        <span class="model-tag">🤖 ${p.ai_model_used || 'غير محدد'}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── الموافقة على منتج ────────────────────────────────────────────────────────
+async function approveProduct(id) {
+  const btn = document.querySelector(`#product-${id} .btn-success`);
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+
+  try {
+    const resp = await fetch(`/api/queue/${id}/approve`, { method: 'POST' });
+    const data = await resp.json();
+
+    if (data.success) {
+      document.getElementById(`product-${id}`)?.remove();
+      queueData = queueData.filter(p => p.id !== id);
+      if (!queueData.length) renderQueue();
+      updateQueueBadge(queueData.length);
+      showToast('✓ تم نشر المنتج بنجاح', 'success');
+    } else {
+      showToast('خطأ في النشر', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+    }
+  } catch (e) {
+    showToast('خطأ: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+  }
+}
+
+// ── رفض منتج ─────────────────────────────────────────────────────────────────
+async function rejectProduct(id) {
+  showConfirmModal({
+    title: 'تأكيد الرفض',
+    message: 'هل تريد رفض هذا المنتج وإزالته من قائمة الانتظار؟',
+    confirmText: 'رفض المنتج',
+    confirmClass: 'btn-danger',
+    onConfirm: async () => {
+      await fetch(`/api/queue/${id}/reject`, { method: 'POST' });
+      document.getElementById(`product-${id}`)?.remove();
+      queueData = queueData.filter(p => p.id !== id);
+      if (!queueData.length) renderQueue();
+      updateQueueBadge(queueData.length);
+      showToast('تم رفض المنتج', 'warning');
+    },
+  });
+}
+
+// ── تعديل المحتوى ──────────────────────────────────────────────────────────
+function editProduct(id) {
+  const product = queueData.find(p => p.id === id);
+  if (!product) return;
+
+  showModal({
+    title: `✎ تعديل محتوى: ${(product.title_ar || product.title).slice(0, 40)}...`,
+    body: `
+      <div class="form-group">
+        <label class="form-label">نص المنشور</label>
+        <textarea class="form-control" id="edit-content" rows="12">${product.ai_content || ''}</textarea>
+      </div>`,
+    confirmText: 'حفظ وموافقة',
+    confirmClass: 'btn-primary',
+    onConfirm: async () => {
+      const newContent = document.getElementById('edit-content')?.value;
+      if (!newContent) return;
+      await fetch(`/api/queue/${id}/edit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_content: newContent }),
+      });
+      product.ai_content = newContent;
+      const contentEl = document.getElementById(`content-${id}`);
+      if (contentEl) contentEl.textContent = newContent;
+      showToast('✓ تم حفظ التعديل', 'success');
+    },
+  });
+}
+
+// ── موافقة على الكل ────────────────────────────────────────────────────────
+async function approveAll() {
+  if (!queueData.length) return;
+  showConfirmModal({
+    title: 'موافقة على الكل',
+    message: `هل تريد الموافقة على ونشر ${queueData.length} منتج دفعةً واحدة؟`,
+    confirmText: 'موافقة على الكل',
+    confirmClass: 'btn-success',
+    onConfirm: async () => {
+      showToast('جاري النشر...', 'info');
+      const resp = await fetch('/api/queue/approve-all', { method: 'POST' });
+      const data = await resp.json();
+      showToast(`✓ تم نشر ${data.published} منتج`, 'success');
+      await loadQueue();
+    },
+  });
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+loadQueue();
+</script>
