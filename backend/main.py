@@ -582,6 +582,82 @@ async def test_key(service: str):
     return {"success": False, "message": f"اختبار {service} غير مدعوم"}
 
 
+# ── إضافة رابط إحالة يدوي ─────────────────────────────────────────────────────────
+class ManualLinkBody(BaseModel):
+    affiliate_url: str
+    title: Optional[str] = None
+    title_ar: Optional[str] = None
+    price_current: Optional[float] = None
+    price_original: Optional[float] = None
+    image_url: Optional[str] = None
+    auto_publish: bool = False
+
+
+@app.post("/api/manual-link")
+async def add_manual_link(body: ManualLinkBody):
+    from backend.config import SessionLocal
+    from backend.models import Product
+    from backend.services.ai_service import generate_content
+
+    url = body.affiliate_url.strip()
+    if not url:
+        raise HTTPException(400, "رابط الإحالة مطلوب")
+
+    # حساب نسبة الخصم
+    discount_pct = 0
+    price_orig = body.price_original or 0.0
+    price_curr = body.price_current or 0.0
+    if price_orig > 0 and price_curr > 0 and price_orig > price_curr:
+        discount_pct = round((1 - price_curr / price_orig) * 100)
+
+    title = (body.title or "منتج من رابط إحالة").strip()
+    title_ar = (body.title_ar or title).strip()
+
+    product_data = {
+        "title": title,
+        "price_original": price_orig,
+        "price_current": price_curr,
+        "discount_pct": discount_pct,
+        "rating": 0.0,
+        "rating_count": 0,
+        "affiliate_url": url,
+    }
+
+    # توليد المحتوى بالذكاء الاصطناعي
+    ai_content, model_used = await generate_content(product_data)
+
+    # حفظ المنتج
+    with SessionLocal() as db:
+        product = Product(
+            title=title,
+            title_ar=title_ar,
+            source="manual",
+            affiliate_url=url,
+            price_current=price_curr,
+            price_original=price_orig,
+            discount_pct=discount_pct,
+            image_url=body.image_url.strip() if body.image_url else None,
+            ai_content=ai_content,
+            ai_model_used=model_used,
+            status="pending",
+        )
+        db.add(product)
+        db.commit()
+        db.refresh(product)
+        product_id = product.id
+        result = _product_to_dict(product)
+
+    if body.auto_publish:
+        from backend.services.publisher import publish_product
+        pub_result = await publish_product(product_id)
+        result["auto_published"] = True
+        result["publish_result"] = pub_result
+    else:
+        result["auto_published"] = False
+
+    return {"success": True, "product": result}
+
+
 # ── تشغيل فوري ────────────────────────────────────────────────────────────────────
 @app.post("/api/run-now")
 async def run_now():

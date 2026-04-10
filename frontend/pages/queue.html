@@ -7,7 +7,109 @@
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="loadQueue()">🔄 تحديث</button>
+    <button class="btn btn-primary" onclick="openManualLinkModal()">➕ إضافة رابط يدوي</button>
     <button class="btn btn-success" onclick="approveAll()" id="btn-approve-all">✓ موافقة على الكل</button>
+  </div>
+</div>
+
+<!-- ── مودال إضافة رابط يدوي ──────────────────────────────────────────────── -->
+<div id="manual-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:90%;max-width:560px;max-height:90vh;overflow-y:auto;animation:modal-in 0.25s ease;">
+    <div class="modal-header">
+      <h3 class="modal-title">➕ إضافة رابط إحالة يدوي</h3>
+      <button class="modal-close" onclick="closeManualModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6;">
+        أضف رابط الإحالة وسيقوم النظام بتوليد محتوى تسويقي عربي احترافي تلقائياً.
+        يمكنك نسخه أو نشره مباشرة.
+      </p>
+
+      <!-- رابط الإحالة -->
+      <div class="form-group">
+        <label class="form-label">🔗 رابط الإحالة <span style="color:var(--danger)">*</span></label>
+        <input class="form-control" type="url" id="ml-url" placeholder="https://www.amazon.sa/dp/...?tag=..." />
+      </div>
+
+      <!-- اسم المنتج -->
+      <div class="form-group">
+        <label class="form-label">📦 اسم المنتج (اختياري)</label>
+        <input class="form-control" type="text" id="ml-title" placeholder="مثال: سماعات سوني اللاسلكية WH-1000XM5" />
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">كلما أضفت تفاصيل أكثر، كان المحتوى أفضل</div>
+      </div>
+
+      <!-- الأسعار في صف -->
+      <div class="grid-2" style="gap:12px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">💰 السعر الحالي (ريال)</label>
+          <input class="form-control" type="number" id="ml-price-current" placeholder="849" min="0" step="0.01" oninput="calcDiscount()" />
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">🏷️ السعر الأصلي (ريال)</label>
+          <input class="form-control" type="number" id="ml-price-original" placeholder="1299" min="0" step="0.01" oninput="calcDiscount()" />
+        </div>
+      </div>
+      <div id="ml-discount-preview" style="display:none;margin:8px 0 16px;font-size:12px;font-weight:600;color:var(--success);">
+        🎉 نسبة الخصم المحسوبة: <span id="ml-discount-val">0</span>%
+      </div>
+
+      <!-- رابط الصورة -->
+      <div class="form-group">
+        <label class="form-label">🖼️ رابط صورة المنتج (اختياري)</label>
+        <input class="form-control" type="url" id="ml-image" placeholder="https://..." />
+      </div>
+
+      <!-- نشر تلقائي -->
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px 16px;margin-top:4px;">
+        <div class="toggle-row" style="padding:0;">
+          <div>
+            <div class="toggle-label">⚡ نشر تلقائي فور التوليد</div>
+            <div class="toggle-desc">سيُنشر على جميع القنوات المفعّلة مباشرةً دون مراجعة</div>
+          </div>
+          <label class="toggle" style="margin-right:8px;">
+            <input type="checkbox" id="ml-auto-publish" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeManualModal()">إلغاء</button>
+      <button class="btn btn-primary" id="ml-submit-btn" onclick="submitManualLink()">
+        ✨ توليد المحتوى
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── مودال نتيجة التوليد ─────────────────────────────────────────────────── -->
+<div id="result-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);backdrop-filter:blur(4px);z-index:1001;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:90%;max-width:600px;max-height:90vh;overflow-y:auto;animation:modal-in 0.25s ease;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="result-modal-title">✅ تم توليد المحتوى</h3>
+      <button class="modal-close" onclick="closeResultModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- معلومات المنتج -->
+      <div id="result-product-info" style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+
+      <!-- المحتوى المولّد -->
+      <label class="form-label">📝 المحتوى التسويقي المولّد</label>
+      <textarea id="result-content" class="form-control" rows="12" style="font-size:13px;line-height:1.8;direction:rtl;"></textarea>
+
+      <!-- معلومات النموذج -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+        <span style="font-size:11px;color:var(--text-tertiary);" id="result-model-tag">🤖 —</span>
+        <span style="font-size:11px;color:var(--text-tertiary);" id="result-chars">0 حرف</span>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;align-items:center;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="copyResultContent()">📋 نسخ المحتوى</button>
+        <button class="btn btn-secondary" onclick="closeResultModal()">إغلاق</button>
+      </div>
+      <div id="result-action-area"></div>
+    </div>
   </div>
 </div>
 
@@ -92,6 +194,12 @@
   align-items: center;
 }
 .model-tag { margin-right: auto; font-size: 11px; color: var(--text-tertiary); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
 </style>
 
 <script>
@@ -259,4 +367,189 @@ async function approveAll() {
 
 // ── Init ────────────────────────────────────────────────────────────────────
 loadQueue();
+
+// ════════════════════════════════════════════════════════════════════════════
+// إضافة رابط إحالة يدوي
+// ════════════════════════════════════════════════════════════════════════════
+
+function openManualLinkModal() {
+  // إعادة تعيين الحقول
+  ['ml-url', 'ml-title', 'ml-price-current', 'ml-price-original', 'ml-image'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('ml-auto-publish').checked = false;
+  document.getElementById('ml-discount-preview').style.display = 'none';
+  const btn = document.getElementById('ml-submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = '✨ توليد المحتوى';
+
+  const overlay = document.getElementById('manual-modal-overlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('ml-url').focus(), 100);
+}
+
+function closeManualModal() {
+  document.getElementById('manual-modal-overlay').style.display = 'none';
+}
+
+function calcDiscount() {
+  const curr = parseFloat(document.getElementById('ml-price-current').value);
+  const orig = parseFloat(document.getElementById('ml-price-original').value);
+  const preview = document.getElementById('ml-discount-preview');
+
+  if (curr > 0 && orig > curr) {
+    const pct = Math.round((1 - curr / orig) * 100);
+    document.getElementById('ml-discount-val').textContent = pct;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+async function submitManualLink() {
+  const url = document.getElementById('ml-url').value.trim();
+  if (!url) {
+    document.getElementById('ml-url').focus();
+    document.getElementById('ml-url').style.borderColor = 'var(--danger)';
+    return;
+  }
+  document.getElementById('ml-url').style.borderColor = '';
+
+  const btn = document.getElementById('ml-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جاري التوليد <span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:4px;"></span>';
+
+  const payload = {
+    affiliate_url:  url,
+    title:          document.getElementById('ml-title').value.trim() || null,
+    price_current:  parseFloat(document.getElementById('ml-price-current').value) || null,
+    price_original: parseFloat(document.getElementById('ml-price-original').value) || null,
+    image_url:      document.getElementById('ml-image').value.trim() || null,
+    auto_publish:   document.getElementById('ml-auto-publish').checked,
+  };
+
+  try {
+    const resp = await fetch('/api/manual-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || !data.success) {
+      throw new Error(data.detail || 'حدث خطأ');
+    }
+
+    closeManualModal();
+    showResultModal(data.product, payload.auto_publish);
+    await loadQueue();
+
+  } catch (err) {
+    showToast('خطأ: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✨ توليد المحتوى';
+  }
+}
+
+function showResultModal(product, autoPublished) {
+  // معلومات المنتج
+  const infoEl = document.getElementById('result-product-info');
+  const priceInfo = product.price_current > 0
+    ? `<span style="font-weight:700;">${product.price_current.toFixed(2)} ريال</span>`
+      + (product.price_original > product.price_current ? ` <span style="text-decoration:line-through;color:var(--text-tertiary);">${product.price_original.toFixed(2)}</span>` : '')
+      + (product.discount_pct > 0 ? ` <span style="background:rgba(52,199,89,0.12);color:var(--success);font-size:11px;font-weight:700;padding:1px 7px;border-radius:12px;">خصم ${product.discount_pct}%</span>` : '')
+    : '<span style="color:var(--text-tertiary);">—</span>';
+
+  infoEl.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;">${product.title_ar || product.title}</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+      ${priceInfo}
+      <a href="${product.affiliate_url}" target="_blank" style="color:var(--accent);font-size:12px;">🔗 فتح الرابط</a>
+    </div>`;
+
+  // المحتوى
+  const contentEl = document.getElementById('result-content');
+  contentEl.value = product.ai_content || '';
+
+  // عداد الحروف
+  const updateChars = () => {
+    document.getElementById('result-chars').textContent = contentEl.value.length + ' حرف';
+  };
+  contentEl.oninput = updateChars;
+  updateChars();
+
+  // النموذج المستخدم
+  document.getElementById('result-model-tag').textContent = '🤖 ' + (product.ai_model_used || 'غير محدد');
+
+  // عنوان ومنطقة الإجراء
+  const titleEl = document.getElementById('result-modal-title');
+  const actionEl = document.getElementById('result-action-area');
+
+  if (autoPublished) {
+    titleEl.textContent = '🚀 تم التوليد والنشر';
+    actionEl.innerHTML = `<span class="badge badge-success" style="font-size:12px;padding:5px 12px;">✓ تم النشر تلقائياً</span>`;
+  } else {
+    titleEl.textContent = '✅ تم توليد المحتوى';
+    actionEl.innerHTML = `
+      <button class="btn btn-success" onclick="approveFromResult(${product.id})">✓ موافقة ونشر</button>`;
+  }
+
+  document.getElementById('result-modal-overlay').style.display = 'flex';
+}
+
+function closeResultModal() {
+  document.getElementById('result-modal-overlay').style.display = 'none';
+}
+
+async function copyResultContent() {
+  const text = document.getElementById('result-content').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('✓ تم نسخ المحتوى', 'success');
+  } catch {
+    document.getElementById('result-content').select();
+    document.execCommand('copy');
+    showToast('✓ تم النسخ', 'success');
+  }
+}
+
+async function approveFromResult(productId) {
+  const btn = document.querySelector('#result-action-area .btn-success');
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+
+  // حفظ أي تعديل على المحتوى
+  const editedContent = document.getElementById('result-content').value;
+  await fetch(`/api/queue/${productId}/edit`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ai_content: editedContent }),
+  });
+
+  const resp = await fetch(`/api/queue/${productId}/approve`, { method: 'POST' });
+  const data = await resp.json();
+
+  if (data.success) {
+    closeResultModal();
+    showToast('✓ تم نشر المنتج بنجاح', 'success');
+    await loadQueue();
+  } else {
+    showToast('خطأ في النشر', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+  }
+}
+
+// إغلاق المودال بالنقر على الخلفية
+document.addEventListener('click', e => {
+  if (e.target.id === 'manual-modal-overlay') closeManualModal();
+  if (e.target.id === 'result-modal-overlay') closeResultModal();
+});
+
+// إغلاق بـ Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('result-modal-overlay').style.display !== 'none') closeResultModal();
+    else if (document.getElementById('manual-modal-overlay').style.display !== 'none') closeManualModal();
+  }
+});
 </script>
