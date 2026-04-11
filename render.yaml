@@ -18,8 +18,15 @@ services:
       - key: ENVIRONMENT
         value: production
 
-      # ── مفاتيح الذكاء الاصطناعي (اختياري — أضف ما تحتاجه) ─────────────────
-      # يكفي مفتاح واحد على الأقل لتوليد المحتوى
+      # ── OpenRouter (موصى به — بوابة موحّدة لجميع النماذج) ──────────────────
+      - key: OPENROUTER_API_KEY
+        sync: false                  # احصل عليه من openrouter.ai — بعض النماذج مجانية
+
+      # ── RapidAPI (بديل Amazon PA API) ───────────────────────────────────────
+      - key: RAPIDAPI_KEY
+        sync: false                  # Real-Time Amazon Data على rapidapi.com
+
+      # ── مفاتيح الذكاء الاصطناعي (اختياري — يكفي OpenRouter أو واحد) ──────
       - key: ANTHROPIC_API_KEY
         sync: false                  # اضبطه يدوياً في Render Dashboard
       - key: OPENAI_API_KEY

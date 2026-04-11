@@ -18,6 +18,41 @@
     </p>
   </div>
 
+  <!-- ══ OpenRouter ══ -->
+  <div class="card mb-4" id="card-openrouter" style="border-color: rgba(99,102,241,0.3);">
+    <div class="card-header" style="background:rgba(99,102,241,0.04);">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🌐</span>
+        <div>
+          <div class="card-title">OpenRouter <span style="font-size:11px;background:rgba(99,102,241,0.1);color:#6366f1;padding:2px 8px;border-radius:10px;margin-right:6px;">موصى به</span></div>
+          <div class="text-sm text-secondary">بوابة موحّدة — Claude · GPT · Gemini · Llama بمفتاح واحد</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-openrouter">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div style="background:rgba(99,102,241,0.06);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-secondary);line-height:1.7;">
+        💡 <strong>بديل مثالي إذا لم تملك مفاتيح Anthropic/OpenAI</strong><br>
+        OpenRouter يتيح استخدام جميع النماذج بمفتاح واحد — بعضها <strong>مجاني تماماً</strong> مثل Llama 3.3 و Gemini Flash.<br>
+        احصل على مفتاحك من: <strong>openrouter.ai</strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-openrouter" placeholder="sk-or-v1-..." />
+            <button onclick="toggleVisibility('key-openrouter', 'eye-openrouter')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-openrouter">👁</button>
+          </div>
+          <button class="btn btn-primary" data-save="openrouter" onclick="saveKey('openrouter', 'key-openrouter')">حفظ</button>
+        </div>
+        <div id="env-hint-openrouter" class="env-hint">OPENROUTER_API_KEY</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('openrouter')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
   <!-- ══ Anthropic ══ -->
   <div class="card mb-4" id="card-anthropic">
     <div class="card-header">
@@ -135,6 +170,41 @@
         <div id="env-hint-groq" class="env-hint">GROQ_API_KEY</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="testKey('groq')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
+  <!-- ══ RapidAPI Amazon ══ -->
+  <div class="card mb-4" id="card-rapidapi">
+    <div class="card-header">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">⚡</span>
+        <div>
+          <div class="card-title">RapidAPI — Amazon Data <span style="font-size:11px;background:rgba(52,199,89,0.1);color:var(--success);padding:2px 8px;border-radius:10px;margin-right:6px;">بديل PA API</span></div>
+          <div class="text-sm text-secondary">جلب منتجات أمازون بدون Amazon PA API — real-time-amazon-data</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-rapidapi_key">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div style="background:rgba(52,199,89,0.06);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-secondary);line-height:1.7;">
+        📦 <strong>بديل مجاني لـ Amazon PA API</strong><br>
+        يجلب المنتجات والأسعار والتقييمات مباشرة من أمازون بدون الحاجة لموافقة Associates Program.<br>
+        ابحث عن <strong>"Real-Time Amazon Data"</strong> في <strong>rapidapi.com</strong> للحصول على المفتاح.
+      </div>
+      <div class="form-group">
+        <label class="form-label">RapidAPI Key</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-rapidapi_key" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+            <button onclick="toggleVisibility('key-rapidapi_key', 'eye-rapidapi_key')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-rapidapi_key">👁</button>
+          </div>
+          <button class="btn btn-primary" data-save="rapidapi_key" onclick="saveKey('rapidapi_key', 'key-rapidapi_key')">حفظ</button>
+        </div>
+        <div id="env-hint-rapidapi_key" class="env-hint">RAPIDAPI_KEY</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="testKey('rapidapi_key')">🔌 اختبار الاتصال</button>
     </div>
   </div>
 
@@ -372,10 +442,12 @@ async function loadKeys() {
     const data = await fetch('/api/keys').then(r => r.json());
 
     const statusMap = {
+      openrouter:        'status-openrouter',
       anthropic:         'status-anthropic',
       openai:            'status-openai',
       google:            'status-google',
       groq:              'status-groq',
+      rapidapi_key:      'status-rapidapi_key',
       amazon_access_key: 'status-amazon_access_key',
       apify:             'status-apify',
       telegram_token:    'status-telegram_token',

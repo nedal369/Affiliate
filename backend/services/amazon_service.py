@@ -72,17 +72,24 @@ async def search_product(query: str) -> Optional[dict]:
     marketplace = get_setting("amazon_marketplace", "SA")
 
     if not all([access_key, secret_key, associate_tag]):
-        logger.warning("مفاتيح Amazon PA API غير مكتملة — يُرجع بيانات تجريبية")
-        return _mock_product(query, associate_tag or "demo-21", marketplace)
+        logger.info("مفاتيح Amazon PA API غير مكتملة — جاري المحاولة عبر RapidAPI")
+        from backend.services.rapidapi_amazon import search_via_rapidapi
+        return await search_via_rapidapi(query)
 
     try:
         result = await asyncio.to_thread(
             _search_amazon_sync, query, access_key, secret_key, associate_tag, marketplace
         )
-        return result
+        if result:
+            return result
+        # PA API لم تُرجع نتيجة — جرّب RapidAPI
+        logger.info("PA API لم تُرجع نتيجة — جاري المحاولة عبر RapidAPI")
+        from backend.services.rapidapi_amazon import search_via_rapidapi
+        return await search_via_rapidapi(query)
     except Exception as exc:
-        logger.error(f"خطأ في Amazon PA API: {exc}")
-        return None
+        logger.error(f"خطأ في Amazon PA API: {exc} — جاري المحاولة عبر RapidAPI")
+        from backend.services.rapidapi_amazon import search_via_rapidapi
+        return await search_via_rapidapi(query)
 
 
 def _search_amazon_sync(

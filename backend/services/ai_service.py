@@ -83,6 +83,35 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "Mixtral 8x7B (Groq) — الأسرع / جودة جيدة",
     },
+    # OpenRouter — بوابة موحّدة لمئات النماذج بمفتاح واحد
+    "openrouter/meta-llama/llama-3.3-70b-instruct": {
+        "provider": "openrouter",
+        "name": "Llama 3.3 70B (OpenRouter)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Llama 3.3 70B via OpenRouter — مجاني / جودة جيدة",
+    },
+    "openrouter/google/gemini-2.0-flash-exp": {
+        "provider": "openrouter",
+        "name": "Gemini 2.0 Flash (OpenRouter)",
+        "speed": "fast",
+        "quality": "high",
+        "label": "Gemini 2.0 Flash via OpenRouter — سريع / جودة عالية",
+    },
+    "openrouter/openai/gpt-4o-mini": {
+        "provider": "openrouter",
+        "name": "GPT-4o Mini (OpenRouter)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "GPT-4o Mini via OpenRouter — سريع / جودة جيدة",
+    },
+    "openrouter/anthropic/claude-3-haiku": {
+        "provider": "openrouter",
+        "name": "Claude 3 Haiku (OpenRouter)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Claude 3 Haiku via OpenRouter — سريع / جودة جيدة",
+    },
 }
 
 SYSTEM_PROMPT = """أنت كاتب محتوى تسويقي محترف متخصص في منتجات أمازون للسوق السعودي والخليجي.
@@ -189,11 +218,46 @@ async def _call_groq(model_id: str, user_prompt: str) -> str:
     return response.choices[0].message.content
 
 
+async def _call_openrouter(model_id: str, user_prompt: str) -> str:
+    """
+    OpenRouter — بوابة موحّدة لمئات النماذج بمفتاح واحد.
+    يستخدم OpenAI-compatible API.
+    model_id يكون بصيغة: openrouter/provider/model-name
+    """
+    from backend.config import get_api_key
+    api_key = get_api_key("openrouter")
+    if not api_key:
+        raise ValueError("مفتاح OpenRouter غير موجود")
+
+    # أزل بادئة "openrouter/" من اسم النموذج
+    actual_model = model_id.removeprefix("openrouter/")
+
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
+    response = await client.chat.completions.create(
+        model=actual_model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=1024,
+        extra_headers={
+            "HTTP-Referer": "https://affiliate-automation.app",
+            "X-Title": "Affiliate Automation System",
+        },
+    )
+    return response.choices[0].message.content
+
+
 _PROVIDER_CALLERS = {
-    "anthropic": _call_anthropic,
-    "openai": _call_openai,
-    "google": _call_google,
-    "groq": _call_groq,
+    "anthropic":  _call_anthropic,
+    "openai":     _call_openai,
+    "google":     _call_google,
+    "groq":       _call_groq,
+    "openrouter": _call_openrouter,
 }
 
 

@@ -462,7 +462,9 @@ async def save_settings(body: dict = Body(...)):
 # ── مفاتيح API ──────────────────────────────────────────────────────────────────
 KNOWN_SERVICES = [
     "anthropic", "openai", "google", "groq",
+    "openrouter",
     "amazon_access_key", "amazon_secret_key", "amazon_associate_tag",
+    "rapidapi_key",
     "apify",
     "telegram_token", "telegram_channel_id",
     "ultramsg_instance", "ultramsg_token", "whatsapp_number",
@@ -567,6 +569,20 @@ async def test_key(service: str):
             client = ApifyClient(api_key)
             user = await asyncio.to_thread(client.user().get)
             return {"success": True, "message": f"متصل ✓ — {user.get('username', 'Apify')}"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    elif service == "rapidapi_key":
+        from backend.services.rapidapi_amazon import test_rapidapi_connection
+        return await test_rapidapi_connection()
+
+    elif service == "openrouter":
+        if not api_key:
+            return {"success": False, "message": "المفتاح غير موجود"}
+        try:
+            from backend.services.ai_service import test_model
+            result = await test_model("openrouter/meta-llama/llama-3.3-70b-instruct")
+            return result
         except Exception as e:
             return {"success": False, "message": str(e)}
 

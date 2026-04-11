@@ -135,6 +135,9 @@ ENV_VAR_MAP: dict[str, str] = {
     "x_api_secret":         "X_API_SECRET",
     "x_access_token":       "X_ACCESS_TOKEN",
     "x_access_secret":      "X_ACCESS_SECRET",
+    # بدائل بدون Amazon PA API
+    "rapidapi_key":         "RAPIDAPI_KEY",
+    "openrouter":           "OPENROUTER_API_KEY",
 }
 
 
@@ -214,6 +217,7 @@ DEFAULT_SETTINGS = {
     "llm_fallback": True,
     "llm_priority": [
         "claude-sonnet-4-5",
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
         "gpt-4o-mini",
         "llama-3.3-70b-versatile",
     ],
