@@ -5,9 +5,10 @@ rapidapi_amazon.py — جلب بيانات منتجات أمازون عبر Rapi
 يستخدم: "Real-Time Amazon Data" API
 الموقع: https://rapidapi.com/search/amazon
 Host: real-time-amazon-data.p.rapidapi.com
+
+الـ endpoint المتاح: /product-offers?asin=ASIN&country=SA
 """
 import re
-import asyncio
 import logging
 from typing import Optional
 
@@ -20,6 +21,9 @@ _BASE_URL      = f"https://{_RAPIDAPI_HOST}"
 
 # خريطة الدول
 _COUNTRY_MAP = {"SA": "SA", "AE": "AE", "EG": "EG", "US": "US", "GB": "GB"}
+
+# ASIN تجريبي لاختبار الاتصال
+_TEST_ASIN = "B09SM24S8C"
 
 
 # ── مساعدات ──────────────────────────────────────────────────────────────────────
@@ -50,38 +54,37 @@ def _build_affiliate_url(asin: str, marketplace: str = "SA") -> str:
     return f"https://www.{domain}/dp/{asin}?tag={tag}"
 
 
-def _parse_product(item: dict, marketplace: str = "SA") -> Optional[dict]:
-    """يحوّل استجابة RapidAPI إلى dict متوافق مع بقية النظام"""
+def _parse_product_offers_response(data: dict, asin: str, marketplace: str = "SA") -> Optional[dict]:
+    """
+    يحوّل استجابة /product-offers إلى dict متوافق مع بقية النظام.
+    الاستجابة: {"status":"OK","data":{"product_title":..., "product_price":..., ...}}
+    """
     try:
-        asin = item.get("asin") or item.get("product_asin", "")
-        if not asin:
+        inner = data.get("data") or data
+        if not inner:
             return None
 
         title = (
-            item.get("product_title")
-            or item.get("title")
-            or item.get("product_name", "")
+            inner.get("product_title")
+            or inner.get("title", "")
         ).strip()
         if not title:
             return None
 
         price_curr = _parse_price(
-            item.get("product_price")
-            or item.get("price")
-            or item.get("current_price", "")
+            inner.get("product_price")
+            or inner.get("price", "")
         )
         price_orig = _parse_price(
-            item.get("product_original_price")
-            or item.get("original_price")
-            or item.get("list_price", "")
+            inner.get("product_original_price")
+            or inner.get("original_price", "")
         ) or price_curr
 
         discount_pct = 0
         if price_orig > 0 and price_curr > 0 and price_orig > price_curr:
             discount_pct = round((1 - price_curr / price_orig) * 100)
         else:
-            # بعض الاستجابات تحتوي على نسبة الخصم مباشرة
-            raw_disc = item.get("product_discount") or item.get("discount", "")
+            raw_disc = inner.get("product_discount") or inner.get("discount", "")
             if raw_disc:
                 try:
                     discount_pct = int(re.sub(r"[^\d]", "", str(raw_disc)) or 0)
@@ -89,7 +92,7 @@ def _parse_product(item: dict, marketplace: str = "SA") -> Optional[dict]:
                     pass
 
         rating = 0.0
-        raw_rating = item.get("product_star_rating") or item.get("stars") or item.get("rating", "")
+        raw_rating = inner.get("product_star_rating") or inner.get("stars") or inner.get("rating", "")
         if raw_rating:
             try:
                 rating = float(re.sub(r"[^\d.]", "", str(raw_rating)) or 0)
@@ -97,37 +100,38 @@ def _parse_product(item: dict, marketplace: str = "SA") -> Optional[dict]:
                 pass
 
         rating_count = 0
-        raw_count = item.get("product_num_ratings") or item.get("ratings_total") or item.get("num_ratings", 0)
+        raw_count = inner.get("product_num_ratings") or inner.get("ratings_total") or inner.get("num_ratings", 0)
         try:
             rating_count = int(str(raw_count).replace(",", "").replace(".", "")) if raw_count else 0
         except ValueError:
             pass
 
         image_url = (
-            item.get("product_photo")
-            or item.get("product_main_image_url")
-            or item.get("thumbnail")
-            or item.get("image", "")
+            inner.get("product_photo")
+            or inner.get("product_main_image_url")
+            or inner.get("thumbnail")
+            or inner.get("image", "")
         )
 
         domain_map = {"SA": "amazon.sa", "AE": "amazon.ae", "EG": "amazon.eg", "US": "amazon.com", "GB": "amazon.co.uk"}
         domain = domain_map.get(marketplace, "amazon.sa")
-        amazon_url = item.get("product_url") or f"https://www.{domain}/dp/{asin}"
+        amazon_url = inner.get("product_url") or f"https://www.{domain}/dp/{asin}"
 
         return {
-            "asin":          asin,
-            "title":         title,
-            "affiliate_url": _build_affiliate_url(asin, marketplace),
-            "amazon_url":    amazon_url,
+            "asin":           asin,
+            "title":          title,
+            "affiliate_url":  _build_affiliate_url(asin, marketplace),
+            "amazon_url":     amazon_url,
             "price_original": price_orig,
             "price_current":  price_curr,
             "discount_pct":   discount_pct,
             "rating":         rating,
             "rating_count":   rating_count,
             "image_url":      image_url,
+            "source":         "rapidapi",
         }
     except Exception as exc:
-        logger.warning(f"خطأ في تحليل منتج RapidAPI: {exc}")
+        logger.warning(f"خطأ في تحليل استجابة RapidAPI product-offers: {exc}")
         return None
 
 
@@ -151,7 +155,8 @@ async def _rapidapi_get(path: str, params: dict) -> Optional[dict]:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, params=params, timeout=timeout) as resp:
                 if resp.status != 200:
-                    logger.warning(f"RapidAPI HTTP {resp.status} for {path}")
+                    text = await resp.text()
+                    logger.warning(f"RapidAPI HTTP {resp.status} for {path}: {text[:200]}")
                     return None
                 return await resp.json()
     except Exception as exc:
@@ -159,28 +164,61 @@ async def _rapidapi_get(path: str, params: dict) -> Optional[dict]:
         return None
 
 
-async def search_via_rapidapi(query: str) -> Optional[dict]:
+async def fetch_product_by_asin(asin: str, marketplace: str = "SA") -> Optional[dict]:
     """
-    يبحث عن منتج في أمازون عبر RapidAPI.
-    يُرجع أفضل منتج يطابق معايير الخصم والتقييم.
+    يجلب بيانات المنتج من RapidAPI باستخدام ASIN.
+    يستخدم endpoint: /product-offers?asin=ASIN&country=SA
     """
-    from backend.config import get_setting
-    marketplace = get_setting("amazon_marketplace", "SA")
-    min_discount = get_setting("min_discount_pct", 20)
-    min_rating   = get_setting("min_rating", 3.5)
-
-    data = await _rapidapi_get("/products/search", {
-        "query":      query,
-        "country":    _COUNTRY_MAP.get(marketplace, "SA"),
-        "sort_by":    "RELEVANCE",
-        "page":       "1",
-        "num_results": "10",
+    country = _COUNTRY_MAP.get(marketplace, "SA")
+    data = await _rapidapi_get("/product-offers", {
+        "asin":    asin,
+        "country": country,
+        "limit":   "1",
+        "page":    "1",
     })
 
     if not data:
         return None
 
-    # استخرج قائمة المنتجات من أي هيكل استجابة
+    product = _parse_product_offers_response(data, asin, marketplace)
+    if product:
+        logger.info(
+            f"RapidAPI product-offers — ASIN {asin}: "
+            f"{product['title'][:50]} — خصم {product['discount_pct']}%"
+        )
+    return product
+
+
+async def search_via_rapidapi(query: str) -> Optional[dict]:
+    """
+    يحاول البحث عن منتج في أمازون.
+    ملاحظة: /products/search يتطلب اشتراكاً منفصلاً.
+    إذا كانت query تبدو وكأنها ASIN (10 أحرف) → يستخدم /product-offers مباشرة.
+    """
+    from backend.config import get_setting
+    marketplace = get_setting("amazon_marketplace", "SA")
+
+    # إذا كانت query تبدو كـ ASIN → جرّب /product-offers مباشرة
+    asin_match = re.fullmatch(r"[A-Z0-9]{10}", query.strip().upper())
+    if asin_match:
+        return await fetch_product_by_asin(query.strip().upper(), marketplace)
+
+    # /products/search قد لا يكون متاحاً في جميع خطط RapidAPI
+    data = await _rapidapi_get("/products/search", {
+        "query":       query,
+        "country":     _COUNTRY_MAP.get(marketplace, "SA"),
+        "sort_by":     "RELEVANCE",
+        "page":        "1",
+        "num_results": "10",
+    })
+
+    if not data:
+        logger.info("RapidAPI /products/search غير متاح — يتطلب اشتراكاً أعلى")
+        return None
+
+    min_discount = get_setting("min_discount_pct", 20)
+    min_rating   = get_setting("min_rating", 3.5)
+
     products = (
         data.get("data", {}).get("products")
         or data.get("products")
@@ -189,7 +227,10 @@ async def search_via_rapidapi(query: str) -> Optional[dict]:
     )
 
     for item in products:
-        product = _parse_product(item, marketplace)
+        asin = item.get("asin") or item.get("product_asin", "")
+        if not asin:
+            continue
+        product = _parse_product_offers_response({"data": item}, asin, marketplace)
         if not product:
             continue
         if product["discount_pct"] < min_discount:
@@ -205,7 +246,8 @@ async def search_via_rapidapi(query: str) -> Optional[dict]:
 
 async def fetch_bestsellers_via_rapidapi() -> list[dict]:
     """
-    يجلب قائمة المنتجات الأكثر مبيعاً (للجدولة التلقائية).
+    يحاول جلب قائمة المنتجات الأكثر مبيعاً.
+    قد لا يكون متاحاً في جميع خطط RapidAPI.
     """
     from backend.config import get_setting
     marketplace = get_setting("amazon_marketplace", "SA")
@@ -213,12 +255,13 @@ async def fetch_bestsellers_via_rapidapi() -> list[dict]:
     min_rating   = get_setting("min_rating", 3.5)
 
     data = await _rapidapi_get("/products/bestsellers", {
-        "country":   _COUNTRY_MAP.get(marketplace, "SA"),
-        "category":  "aps",     # جميع الأقسام
-        "page":      "1",
+        "country":  _COUNTRY_MAP.get(marketplace, "SA"),
+        "category": "aps",
+        "page":     "1",
     })
 
     if not data:
+        logger.info("RapidAPI /products/bestsellers غير متاح في هذا الاشتراك")
         return []
 
     products_raw = (
@@ -231,7 +274,10 @@ async def fetch_bestsellers_via_rapidapi() -> list[dict]:
 
     results = []
     for item in products_raw:
-        product = _parse_product(item, marketplace)
+        asin = item.get("asin") or item.get("product_asin", "")
+        if not asin:
+            continue
+        product = _parse_product_offers_response({"data": item}, asin, marketplace)
         if not product:
             continue
         if product["discount_pct"] < min_discount:
@@ -245,29 +291,16 @@ async def fetch_bestsellers_via_rapidapi() -> list[dict]:
 
 
 async def test_rapidapi_connection() -> dict:
-    """اختبار الاتصال بـ RapidAPI"""
+    """اختبار الاتصال بـ RapidAPI باستخدام /product-offers مع ASIN تجريبي"""
     from backend.config import get_api_key
     if not get_api_key("rapidapi_key"):
         return {"success": False, "message": "مفتاح RapidAPI غير موجود"}
     try:
-        from backend.config import get_setting
-        marketplace = get_setting("amazon_marketplace", "SA")
-        data = await _rapidapi_get("/products/search", {
-            "query":   "headphones",
-            "country": _COUNTRY_MAP.get(marketplace, "SA"),
-            "page":    "1",
-            "num_results": "1",
-        })
-        if data:
-            products = (
-                data.get("data", {}).get("products")
-                or data.get("products")
-                or []
-            )
-            if products:
-                title = products[0].get("product_title", "منتج")[:40]
-                return {"success": True, "message": f"متصل ✓ — مثال: {title}"}
-            return {"success": True, "message": "متصل ✓ — RapidAPI جاهز"}
-        return {"success": False, "message": "لا توجد استجابة من RapidAPI"}
+        product = await fetch_product_by_asin(_TEST_ASIN)
+        if product:
+            title = product.get("title", "منتج")[:40]
+            price = product.get("price_current", 0)
+            return {"success": True, "message": f"متصل ✓ — {title} ({price})"}
+        return {"success": False, "message": "لا توجد استجابة من RapidAPI — تحقق من المفتاح أو النطاق المسموح به"}
     except Exception as exc:
         return {"success": False, "message": str(exc)}
