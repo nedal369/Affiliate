@@ -218,6 +218,7 @@ DEFAULT_SETTINGS = {
         "llama-3.3-70b-versatile",
     ],
     "amazon_marketplace": "SA",
+    "amazon_associate_tag": "nedal01-21",
 }
 
 

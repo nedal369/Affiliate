@@ -596,13 +596,16 @@ async def add_manual_link(body: ManualLinkBody):
     from backend.config import SessionLocal
     from backend.models import Product
     from backend.services.ai_service import generate_content
-    from backend.services.link_fetcher import fetch_product_data
+    from backend.services.link_fetcher import fetch_product_data, resolve_affiliate_url
 
     url = body.url.strip()
     if not url:
         raise HTTPException(400, "الرابط مطلوب")
 
-    # ① جلب بيانات المنتج تلقائياً
+    # ① بناء رابط الإحالة (يُضيف tag= تلقائياً إذا لم يكن موجوداً)
+    affiliate_url = resolve_affiliate_url(url)
+
+    # ② جلب بيانات المنتج من الصفحة
     fetched = await fetch_product_data(url)
 
     title = fetched.get("title") or "منتج من رابط إحالة"
@@ -614,20 +617,20 @@ async def add_manual_link(body: ManualLinkBody):
         "discount_pct":   fetched.get("discount_pct")   or 0,
         "rating":         fetched.get("rating")          or 0.0,
         "rating_count":   fetched.get("rating_count")    or 0,
-        "affiliate_url":  url,
+        "affiliate_url":  affiliate_url,
     }
 
-    # ② توليد المحتوى
+    # ③ توليد المحتوى
     ai_content, model_used = await generate_content(product_data)
 
-    # ③ حفظ في قاعدة البيانات
+    # ④ حفظ في قاعدة البيانات
     with SessionLocal() as db:
         product = Product(
             title=title,
             title_ar=title,
             source="manual",
             amazon_asin=fetched.get("amazon_asin"),
-            affiliate_url=url,
+            affiliate_url=affiliate_url,
             price_current=product_data["price_current"],
             price_original=product_data["price_original"],
             discount_pct=product_data["discount_pct"],
@@ -645,8 +648,9 @@ async def add_manual_link(body: ManualLinkBody):
         result = _product_to_dict(product)
 
     result["fetch_source"] = fetched.get("fetch_source", "scrape")
+    result["affiliate_url"] = affiliate_url   # الرابط مع tag=
 
-    # ④ نشر تلقائي إذا طُلب
+    # ⑤ نشر تلقائي إذا طُلب
     if body.auto_publish:
         from backend.services.publisher import publish_product
         pub_result = await publish_product(product_id)

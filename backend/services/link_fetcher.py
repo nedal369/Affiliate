@@ -12,7 +12,7 @@ import json
 import asyncio
 import logging
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 import aiohttp
 
@@ -353,6 +353,39 @@ async def fetch_product_data(url: str) -> dict:
         f"title={str(data['title'])[:40]}, price={data['price_current']}"
     )
     return data
+
+
+def resolve_affiliate_url(raw_url: str) -> str:
+    """
+    يُحوّل أي رابط أمازون عادي إلى رابط إحالة:
+    - إذا كان الرابط يحتوي فعلاً على tag= → يُرجعه كما هو
+    - إذا كان رابط أمازون بدون tag= → يستخرج ASIN ويبني رابط إحالة
+      باستخدام المعرّف المحفوظ في الإعدادات (افتراضي: nedal01-21)
+    - أي رابط آخر → يُرجعه كما هو
+    """
+    parsed = urlparse(raw_url)
+    params = parse_qs(parsed.query)
+
+    # الرابط يحتوي بالفعل على معرّف إحالة
+    if "tag" in params:
+        return raw_url
+
+    # رابط أمازون بدون معرّف → أضف المعرّف
+    if _is_amazon_url(raw_url):
+        asin = extract_asin(raw_url)
+        if asin:
+            from backend.config import get_api_key, get_setting
+            tag = (
+                get_api_key("amazon_associate_tag")
+                or get_setting("amazon_associate_tag", "nedal01-21")
+            )
+            marketplace = get_setting("amazon_marketplace", "SA")
+            domain_map = {"SA": "amazon.sa", "AE": "amazon.ae", "EG": "amazon.eg"}
+            domain = domain_map.get(marketplace, "amazon.sa")
+            return f"https://www.{domain}/dp/{asin}?tag={tag}"
+
+    # ليس رابط أمازون → أرجعه كما هو
+    return raw_url
 
 
 def _merge(base: dict, extra: dict):
