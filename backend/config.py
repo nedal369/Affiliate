@@ -213,13 +213,14 @@ DEFAULT_SETTINGS = {
     "enable_x": False,
     "attach_image": True,
     "manual_approval": True,
-    "primary_llm": "claude-sonnet-4-5",
+    "primary_llm": "gemini-1.5-flash",
     "llm_fallback": True,
     "llm_priority": [
-        "claude-sonnet-4-5",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
         "openrouter/meta-llama/llama-3.3-70b-instruct",
-        "gpt-4o-mini",
         "llama-3.3-70b-versatile",
+        "gpt-4o-mini",
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
@@ -232,6 +233,13 @@ def init_default_settings():
         existing = get_setting(key)
         if existing is None:
             set_setting(key, value)
+
+    # إذا كان النموذج الأساسي لا يزال Claude وGoogle API موجود → حوّل لـ Gemini
+    current_primary = get_setting("primary_llm", "")
+    if current_primary and current_primary.startswith("claude") and os.getenv("GOOGLE_API_KEY"):
+        set_setting("primary_llm", "gemini-1.5-flash")
+        set_setting("llm_priority", DEFAULT_SETTINGS["llm_priority"])
+        logger.info("تم تحديث النموذج الأساسي إلى gemini-1.5-flash")
 
 
 # ── إنشاء الجداول ─────────────────────────────────────────────────────────────
