@@ -490,6 +490,9 @@
       <a class="nav-item" data-page="history" href="#">
         <span class="nav-icon">📋</span> سجل النشر
       </a>
+      <a class="nav-item" data-page="deals-finder" href="#">
+        <span class="nav-icon">🔍</span> اكتشاف العروض
+      </a>
 
       <div class="nav-label">الإدارة</div>
       <a class="nav-item" data-page="settings" href="#">
@@ -555,13 +558,14 @@
 <script>
   // ── Router ──────────────────────────────────────────────────────────────────
   const PAGES = {
-    'dashboard':  '/static/pages/dashboard.html',
-    'queue':      '/static/pages/queue.html',
-    'history':    '/static/pages/history.html',
-    'settings':   '/static/pages/settings.html',
-    'api-keys':   '/static/pages/api-keys.html',
-    'analytics':  '/static/pages/analytics.html',
-    'admin':      '/static/pages/admin.html',
+    'dashboard':     '/static/pages/dashboard.html',
+    'queue':         '/static/pages/queue.html',
+    'history':       '/static/pages/history.html',
+    'deals-finder':  '/static/pages/deals-finder.html',
+    'settings':      '/static/pages/settings.html',
+    'api-keys':      '/static/pages/api-keys.html',
+    'analytics':     '/static/pages/analytics.html',
+    'admin':         '/static/pages/admin.html',
   };
 
   let currentPage = '';

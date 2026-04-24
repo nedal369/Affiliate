@@ -839,6 +839,124 @@ async def delete_keyword(keyword_id: int):
     return {"success": True}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════════
+# DEALS FINDER ENDPOINTS — اكتشاف العروض بالذكاء الاصطناعي
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/deals/categories")
+async def get_deals_categories():
+    """قائمة التصنيفات المتاحة للبحث"""
+    from backend.services.deals_finder_service import get_all_categories
+    return get_all_categories()
+
+
+class DiscoverDealsBody(BaseModel):
+    category_ids: list[str]
+
+
+@app.post("/api/deals/discover")
+async def discover_deals(body: DiscoverDealsBody, request: Request):
+    """اكتشاف أفضل العروض للتصنيفات المحددة باستخدام RapidAPI + AI"""
+    if not body.category_ids:
+        raise HTTPException(400, "يجب اختيار تصنيف واحد على الأقل")
+    if len(body.category_ids) > 8:
+        raise HTTPException(400, "الحد الأقصى 8 تصنيفات في البحث الواحد")
+    try:
+        from backend.services.deals_finder_service import discover_deals as _discover
+        results = await _discover(body.category_ids)
+        return {"success": True, "results": results}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.error(f"خطأ في اكتشاف العروض: {exc}")
+        raise HTTPException(500, f"خطأ في الاكتشاف: {exc}")
+
+
+class GenerateDealsContentBody(BaseModel):
+    deals: list[dict]
+
+
+@app.post("/api/deals/generate-content")
+async def generate_deals_content(body: GenerateDealsContentBody, request: Request):
+    """توليد محتوى عربي لقائمة منتجات محددة"""
+    if not body.deals:
+        raise HTTPException(400, "لا توجد منتجات محددة")
+    if len(body.deals) > 20:
+        raise HTTPException(400, "الحد الأقصى 20 منتج في الطلب الواحد")
+
+    from backend.services.ai_service import generate_content
+
+    async def gen_one(deal: dict) -> dict:
+        content, model_used = await generate_content(deal)
+        return {
+            "asin": deal.get("asin", ""),
+            "content": content,
+            "model_used": model_used,
+        }
+
+    results = await asyncio.gather(*[gen_one(d) for d in body.deals], return_exceptions=True)
+    output = []
+    for r in results:
+        if isinstance(r, Exception):
+            logger.error(f"خطأ في توليد المحتوى: {r}")
+            output.append({"asin": "", "content": "", "error": str(r)})
+        else:
+            output.append(r)
+
+    return {"success": True, "results": output}
+
+
+class PublishDealsBody(BaseModel):
+    deals: list[dict]
+
+
+@app.post("/api/deals/publish")
+async def publish_deals(body: PublishDealsBody, request: Request):
+    """حفظ ونشر العروض المحددة مع محتواها"""
+    if not body.deals:
+        raise HTTPException(400, "لا توجد منتجات للنشر")
+
+    from backend.config import SessionLocal
+    from backend.models import Product
+    from backend.services.publisher import publish_product
+
+    published_count = 0
+    results = []
+
+    for deal in body.deals:
+        try:
+            with SessionLocal() as db:
+                product = Product(
+                    title=deal.get("title", ""),
+                    source="deals_finder",
+                    amazon_asin=deal.get("asin", ""),
+                    amazon_url=deal.get("amazon_url", ""),
+                    affiliate_url=deal.get("affiliate_url", ""),
+                    price_original=deal.get("price_original", 0),
+                    price_current=deal.get("price_current", 0),
+                    discount_pct=deal.get("discount_pct", 0),
+                    rating=deal.get("rating", 0),
+                    rating_count=deal.get("rating_count", 0),
+                    image_url=deal.get("image_url", ""),
+                    ai_content=deal.get("content", ""),
+                    ai_model_used=deal.get("model_used", ""),
+                    status="approved",
+                )
+                db.add(product)
+                db.commit()
+                db.refresh(product)
+                product_id = product.id
+
+            pub_result = await publish_product(product_id)
+            published_count += 1
+            results.append({"asin": deal.get("asin", ""), "success": True, "product_id": product_id, **pub_result})
+        except Exception as exc:
+            logger.error(f"خطأ في نشر المنتج {deal.get('asin', '')}: {exc}")
+            results.append({"asin": deal.get("asin", ""), "success": False, "error": str(exc)})
+
+    return {"success": True, "published": published_count, "total": len(body.deals), "results": results}
+
+
 # ── Health Check ──────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 async def health():

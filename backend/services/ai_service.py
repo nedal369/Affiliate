@@ -352,3 +352,105 @@ async def test_model(model_id: str) -> dict:
 
 async def get_available_models() -> list:
     return [{"id": k, **v} for k, v in SUPPORTED_MODELS.items()]
+
+
+async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
+    """
+    استدعاء AI بـ prompt مخصص (بدون قيود نموذج التسويق).
+    يُستخدم لمهام مثل اختيار المنتجات وترتيبها.
+    يُرجع: النص الخام من النموذج.
+    """
+    from backend.config import get_setting
+
+    if model_id == "auto":
+        priority = get_setting("llm_priority", ["gemini-1.5-flash", "gpt-4o-mini", "llama-3.3-70b-versatile"])
+        primary = get_setting("primary_llm", "gemini-1.5-flash")
+        if primary and primary not in priority:
+            priority = [primary] + priority
+        models_to_try = priority
+    else:
+        models_to_try = [model_id]
+
+    for mid in models_to_try:
+        if mid not in SUPPORTED_MODELS:
+            continue
+        provider = SUPPORTED_MODELS[mid]["provider"]
+        try:
+            if provider == "anthropic":
+                from backend.config import get_api_key
+                import anthropic
+                api_key = get_api_key("anthropic")
+                if not api_key:
+                    continue
+                client = anthropic.AsyncAnthropic(api_key=api_key)
+                msg = await client.messages.create(
+                    model=mid,
+                    max_tokens=1024,
+                    system=system or "أنت مساعد ذكي.",
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return msg.content[0].text
+            elif provider == "openai":
+                from backend.config import get_api_key
+                from openai import AsyncOpenAI
+                api_key = get_api_key("openai")
+                if not api_key:
+                    continue
+                client = AsyncOpenAI(api_key=api_key)
+                resp = await client.chat.completions.create(
+                    model=mid,
+                    messages=[
+                        {"role": "system", "content": system or "أنت مساعد ذكي."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=512,
+                )
+                return resp.choices[0].message.content
+            elif provider == "google":
+                from backend.config import get_api_key
+                import google.generativeai as genai
+                api_key = get_api_key("google")
+                if not api_key:
+                    continue
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(mid, system_instruction=system or "أنت مساعد ذكي.")
+                resp = await asyncio.to_thread(model.generate_content, prompt)
+                return resp.text
+            elif provider == "groq":
+                from backend.config import get_api_key
+                from groq import AsyncGroq
+                api_key = get_api_key("groq")
+                if not api_key:
+                    continue
+                client = AsyncGroq(api_key=api_key)
+                resp = await client.chat.completions.create(
+                    model=mid,
+                    messages=[
+                        {"role": "system", "content": system or "أنت مساعد ذكي."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=512,
+                )
+                return resp.choices[0].message.content
+            elif provider == "openrouter":
+                from backend.config import get_api_key
+                from openai import AsyncOpenAI
+                api_key = get_api_key("openrouter")
+                if not api_key:
+                    continue
+                actual_model = mid.removeprefix("openrouter/")
+                client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                resp = await client.chat.completions.create(
+                    model=actual_model,
+                    messages=[
+                        {"role": "system", "content": system or "أنت مساعد ذكي."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=512,
+                )
+                return resp.choices[0].message.content
+        except Exception as exc:
+            logger.warning(f"call_ai failed with {mid}: {exc}")
+            continue
+
+    raise RuntimeError("جميع نماذج AI غير متاحة")
