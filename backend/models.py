@@ -86,6 +86,19 @@ class TrendKeyword(Base):
     last_used = Column(DateTime, nullable=True)
 
 
+class DiscoveryCategory(Base):
+    """تصنيفات اكتشاف العروض — قابلة للإضافة والتعديل يدوياً"""
+    __tablename__ = "discovery_categories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cat_id = Column(String(100), unique=True, nullable=False)   # مثل: groceries, gaming
+    name_ar = Column(String(200), nullable=False)
+    icon = Column(String(20), default="🛍️")
+    keywords = Column(Text, nullable=False)                     # JSON list
+    active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+
+
 class ScraperCache(Base):
     """كاش السكرابر — نتائج البحث والمنتجات المجلوبة من HTML"""
     __tablename__ = "scraper_cache"

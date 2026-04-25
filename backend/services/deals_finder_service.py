@@ -95,10 +95,37 @@ _BESTSELLER_SLUG_MAP = {
 
 
 def get_all_categories() -> list[dict]:
+    """يقرأ التصنيفات من DB، يعود للقائمة الثابتة إذا كانت القاعدة فارغة"""
+    import json as _json
+    try:
+        from backend.config import SessionLocal
+        from backend.models import DiscoveryCategory
+        with SessionLocal() as db:
+            rows = db.query(DiscoveryCategory).filter(DiscoveryCategory.active == True).order_by(DiscoveryCategory.sort_order).all()
+            if rows:
+                return [{"id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon} for r in rows]
+    except Exception:
+        pass
     return [{"id": c["id"], "name_ar": c["name_ar"], "icon": c["icon"]} for c in CATEGORIES]
 
 
 def _get_category(category_id: str) -> Optional[dict]:
+    """يجلب تصنيفاً من DB بمعرّفه"""
+    import json as _json
+    try:
+        from backend.config import SessionLocal
+        from backend.models import DiscoveryCategory
+        with SessionLocal() as db:
+            row = db.query(DiscoveryCategory).filter(DiscoveryCategory.cat_id == category_id).first()
+            if row:
+                return {
+                    "id": row.cat_id,
+                    "name_ar": row.name_ar,
+                    "icon": row.icon,
+                    "keywords": _json.loads(row.keywords),
+                }
+    except Exception:
+        pass
     return next((c for c in CATEGORIES if c["id"] == category_id), None)
 
 

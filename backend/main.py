@@ -995,8 +995,83 @@ async def delete_keyword(keyword_id: int):
 @app.get("/api/deals/categories")
 async def get_deals_categories():
     """قائمة التصنيفات المتاحة للبحث"""
-    from backend.services.deals_finder_service import get_all_categories
-    return get_all_categories()
+    import json as _json
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+    with SessionLocal() as db:
+        rows = db.query(DiscoveryCategory).order_by(DiscoveryCategory.sort_order).all()
+        return [
+            {
+                "id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon,
+                "keywords": _json.loads(r.keywords), "active": r.active,
+                "db_id": r.id, "sort_order": r.sort_order,
+            }
+            for r in rows
+        ]
+
+
+class CategoryBody(BaseModel):
+    name_ar: str
+    icon: str = "🛍️"
+    keywords: list[str]
+    active: bool = True
+
+
+@app.post("/api/deals/categories")
+async def create_category(body: CategoryBody, request: Request):
+    """إضافة تصنيف جديد"""
+    import json as _json, re
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+    # توليد cat_id من الاسم
+    cat_id = re.sub(r"[^a-z0-9_]", "", body.name_ar.lower().replace(" ", "_").replace("-", "_"))[:50]
+    if not cat_id:
+        cat_id = f"cat_{int(__import__('time').time())}"
+    with SessionLocal() as db:
+        if db.query(DiscoveryCategory).filter(DiscoveryCategory.cat_id == cat_id).first():
+            cat_id = f"{cat_id}_{int(__import__('time').time())}"
+        max_order = db.query(DiscoveryCategory).count()
+        row = DiscoveryCategory(
+            cat_id=cat_id, name_ar=body.name_ar, icon=body.icon,
+            keywords=_json.dumps(body.keywords, ensure_ascii=False),
+            active=body.active, sort_order=max_order + 1,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"success": True, "id": row.id, "cat_id": row.cat_id}
+
+
+@app.put("/api/deals/categories/{db_id}")
+async def update_category(db_id: int, body: CategoryBody, request: Request):
+    """تعديل تصنيف موجود"""
+    import json as _json
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+    with SessionLocal() as db:
+        row = db.get(DiscoveryCategory, db_id)
+        if not row:
+            raise HTTPException(404, "التصنيف غير موجود")
+        row.name_ar = body.name_ar
+        row.icon = body.icon
+        row.keywords = _json.dumps(body.keywords, ensure_ascii=False)
+        row.active = body.active
+        db.commit()
+        return {"success": True}
+
+
+@app.delete("/api/deals/categories/{db_id}")
+async def delete_category(db_id: int, request: Request):
+    """حذف تصنيف"""
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+    with SessionLocal() as db:
+        row = db.get(DiscoveryCategory, db_id)
+        if not row:
+            raise HTTPException(404, "التصنيف غير موجود")
+        db.delete(row)
+        db.commit()
+        return {"success": True}
 
 
 class DiscoverDealsBody(BaseModel):

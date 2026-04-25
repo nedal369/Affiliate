@@ -254,8 +254,50 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_db()
     init_default_settings()
+    _seed_default_categories()
     # ملاحظة: إنشاء Admin يتم في الخلفية من main.py لتجنب blocking الـ startup
     logger.info(f"قاعدة البيانات جاهزة: {DB_PATH}")
+
+
+def _seed_default_categories():
+    """أضف التصنيفات الافتراضية إذا كانت القاعدة فارغة"""
+    import json as _json
+    from backend.models import DiscoveryCategory
+    with SessionLocal() as db:
+        if db.query(DiscoveryCategory).count() > 0:
+            return
+        defaults = [
+            ("groceries", "المقاضي والبقالة", "🛒", ["coffee beans", "olive oil", "honey", "dates", "nuts mix", "spices set"], 1),
+            ("kitchen_appliances", "الأجهزة المنزلية الصغيرة", "🍳", ["air fryer", "rice cooker", "blender", "coffee maker", "stand mixer", "electric kettle"], 2),
+            ("kitchen_tools", "أدوات المطبخ", "🍴", ["non stick pan set", "kitchen knife set", "food storage containers", "cookware set", "cutting board", "measuring cups"], 3),
+            ("cleaning", "التنظيف والعناية بالمنزل", "🧹", ["vacuum cleaner", "robot vacuum", "steam mop", "air purifier", "humidifier", "iron steamer"], 4),
+            ("bedding", "أغطية وأقمشة المنزل", "🛏️", ["bed sheets king", "memory foam pillow", "comforter set", "blackout curtains", "bath towel set", "weighted blanket"], 5),
+            ("home_decor", "ديكور المنزل", "🪴", ["wall clock", "led lights strip", "table lamp", "wall art", "artificial plants", "diffuser oil"], 6),
+            ("perfumes", "العطور", "🌸", ["men perfume", "women perfume", "oud perfume", "body spray", "cologne", "incense bakhoor"], 7),
+            ("skincare", "العناية بالبشرة", "✨", ["face cream", "vitamin c serum", "sunscreen", "face wash", "moisturizer", "anti aging cream"], 8),
+            ("haircare", "العناية بالشعر", "💇", ["hair dryer", "hair straightener", "hair oil", "shampoo set", "hair clipper", "scalp brush"], 9),
+            ("personal_care", "العناية الشخصية", "🪥", ["electric toothbrush", "shaver men", "epilator", "nail kit", "facial cleansing brush", "teeth whitening"], 10),
+            ("audio", "الصوتيات والسماعات", "🎧", ["wireless earbuds", "noise cancelling headphones", "bluetooth speaker", "soundbar", "studio headphones", "portable speaker"], 11),
+            ("phone_accessories", "اكسسوارات الجوال", "📱", ["phone charger fast", "power bank 20000", "phone case", "screen protector", "wireless charger", "car phone holder"], 12),
+            ("smart_home", "المنزل الذكي", "💡", ["smart bulb", "smart plug", "security camera", "video doorbell", "smart speaker", "wifi extender"], 13),
+            ("wearables", "الساعات الذكية واللياقة", "⌚", ["smart watch", "fitness tracker", "apple watch band", "heart rate monitor", "smart ring", "kids smart watch"], 14),
+            ("gaming", "الألعاب والقيمنق", "🎮", ["gaming headset", "mechanical keyboard rgb", "gaming mouse", "gaming chair", "console controller", "gaming monitor"], 15),
+            ("kids_toys", "ألعاب الأطفال", "🧸", ["lego building blocks", "educational toys", "remote control car", "kids puzzle", "doll house", "stuffed animals"], 16),
+            ("baby", "مستلزمات الأطفال الرضع", "👶", ["baby monitor", "baby stroller", "diaper bag", "baby bottle warmer", "baby carrier", "kids tablet"], 17),
+            ("sports", "الرياضة واللياقة", "🏋️", ["adjustable dumbbells", "yoga mat", "resistance bands set", "treadmill foldable", "exercise bike", "protein shaker"], 18),
+            ("outdoor", "الرحلات والتخييم", "⛺", ["camping tent", "portable cooler", "sleeping bag", "camping chair", "outdoor grill", "hiking backpack"], 19),
+            ("car", "اكسسوارات السيارة", "🚗", ["car vacuum", "dash cam", "car air freshener", "car seat cover", "tire inflator", "jump starter"], 20),
+            ("office", "المكتب والعمل من المنزل", "💻", ["ergonomic office chair", "monitor stand", "desk lamp led", "laptop stand", "webcam hd", "wireless mouse"], 21),
+            ("islamic", "المنتجات الإسلامية", "🕌", ["prayer mat", "quran reader pen", "digital tasbih", "azan clock", "prayer rug travel", "islamic decor"], 22),
+        ]
+        for cat_id, name_ar, icon, keywords, order in defaults:
+            db.add(DiscoveryCategory(
+                cat_id=cat_id, name_ar=name_ar, icon=icon,
+                keywords=_json.dumps(keywords, ensure_ascii=False),
+                active=True, sort_order=order,
+            ))
+        db.commit()
+        logger.info(f"تم إضافة {len(defaults)} تصنيف افتراضي")
 
 
 def _migrate_db():
@@ -272,6 +314,16 @@ def _migrate_db():
             cache_key VARCHAR(255) PRIMARY KEY,
             payload TEXT NOT NULL,
             fetched_at DATETIME
+        )""",
+        # جدول تصنيفات الاكتشاف
+        """CREATE TABLE IF NOT EXISTS discovery_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cat_id VARCHAR(100) UNIQUE NOT NULL,
+            name_ar VARCHAR(200) NOT NULL,
+            icon VARCHAR(20) DEFAULT '🛍️',
+            keywords TEXT NOT NULL,
+            active BOOLEAN DEFAULT 1,
+            sort_order INTEGER DEFAULT 0
         )""",
     ]
     with engine.connect() as conn:
