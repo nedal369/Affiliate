@@ -582,7 +582,15 @@ async def test_key(service: str):
             return {"success": False, "message": "المفتاح غير موجود"}
         try:
             from backend.services.ai_service import test_model
-            result = await test_model("openrouter/meta-llama/llama-3.3-70b-instruct")
+            # جرّب Gemini 2.0 Flash المجاني أولاً، ثم Llama
+            for model in [
+                "openrouter/google/gemini-2.0-flash-exp:free",
+                "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+                "openrouter/meta-llama/llama-3.3-70b-instruct",
+            ]:
+                result = await test_model(model)
+                if result.get("success"):
+                    return result
             return result
         except Exception as e:
             return {"success": False, "message": str(e)}

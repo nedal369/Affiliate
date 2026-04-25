@@ -48,9 +48,31 @@ function setVal(key, el) {
 
 function renderSettings() {
   const s = settingsData;
-  const modelsOptions = aiModels.map(m =>
-    `<option value="${m.id}" ${s.primary_llm === m.id ? 'selected' : ''}>${m.label || m.name}</option>`
-  ).join('');
+
+  // تجميع النماذج حسب المزود
+  const providerLabels = {
+    openrouter: '🌐 OpenRouter',
+    anthropic:  '🟣 Anthropic (Claude)',
+    openai:     '🟢 OpenAI (ChatGPT)',
+    groq:       '⚡ Groq (مجاني وسريع)',
+    google:     '🔵 Google (Gemini)',
+  };
+  const grouped = {};
+  aiModels.forEach(m => {
+    const p = m.provider || 'other';
+    if (!grouped[p]) grouped[p] = [];
+    grouped[p].push(m);
+  });
+  const providerOrder = ['openrouter', 'groq', 'anthropic', 'openai', 'google'];
+  let modelsOptions = `<option value="" ${!s.primary_llm ? 'selected' : ''}>🤖 تلقائي — يختار حسب المفاتيح المتاحة</option>`;
+  for (const prov of providerOrder) {
+    if (!grouped[prov] || !grouped[prov].length) continue;
+    modelsOptions += `<optgroup label="${providerLabels[prov] || prov}">`;
+    modelsOptions += grouped[prov].map(m =>
+      `<option value="${m.id}" ${s.primary_llm === m.id ? 'selected' : ''}>${m.label || m.name}</option>`
+    ).join('');
+    modelsOptions += '</optgroup>';
+  }
 
   document.getElementById('settings-form').innerHTML = `
 
