@@ -14,65 +14,84 @@ logger = logging.getLogger(__name__)
 # ── التصنيفات المدعومة ────────────────────────────────────────────────────────────
 
 CATEGORIES = [
-    # ── المنزل والمطبخ ─────────────────────────────
-    {"id": "groceries", "name_ar": "المقاضي والبقالة", "icon": "🛒",
-     "keywords": ["coffee beans", "olive oil", "honey", "dates", "nuts mix", "spices set"]},
-    {"id": "kitchen_appliances", "name_ar": "الأجهزة المنزلية الصغيرة", "icon": "🍳",
-     "keywords": ["air fryer", "rice cooker", "blender", "coffee maker", "stand mixer", "electric kettle"]},
-    {"id": "kitchen_tools", "name_ar": "أدوات المطبخ", "icon": "🍴",
-     "keywords": ["non stick pan set", "kitchen knife set", "food storage containers", "cookware set", "cutting board", "measuring cups"]},
-    {"id": "cleaning", "name_ar": "التنظيف والعناية بالمنزل", "icon": "🧹",
-     "keywords": ["vacuum cleaner", "robot vacuum", "steam mop", "air purifier", "humidifier", "iron steamer"]},
-    {"id": "bedding", "name_ar": "أغطية وأقمشة المنزل", "icon": "🛏️",
-     "keywords": ["bed sheets king", "memory foam pillow", "comforter set", "blackout curtains", "bath towel set", "weighted blanket"]},
-    {"id": "home_decor", "name_ar": "ديكور المنزل", "icon": "🪴",
-     "keywords": ["wall clock", "led lights strip", "table lamp", "wall art", "artificial plants", "diffuser oil"]},
-
-    # ── العناية الشخصية ─────────────────────────────
-    {"id": "perfumes", "name_ar": "العطور", "icon": "🌸",
-     "keywords": ["men perfume", "women perfume", "oud perfume", "body spray", "cologne", "incense bakhoor"]},
-    {"id": "skincare", "name_ar": "العناية بالبشرة", "icon": "✨",
-     "keywords": ["face cream", "vitamin c serum", "sunscreen", "face wash", "moisturizer", "anti aging cream"]},
-    {"id": "haircare", "name_ar": "العناية بالشعر", "icon": "💇",
-     "keywords": ["hair dryer", "hair straightener", "hair oil", "shampoo set", "hair clipper", "scalp brush"]},
-    {"id": "personal_care", "name_ar": "العناية الشخصية", "icon": "🪥",
-     "keywords": ["electric toothbrush", "shaver men", "epilator", "nail kit", "facial cleansing brush", "teeth whitening"]},
-
-    # ── الإلكترونيات والتقنية ─────────────────────────
-    {"id": "audio", "name_ar": "الصوتيات والسماعات", "icon": "🎧",
-     "keywords": ["wireless earbuds", "noise cancelling headphones", "bluetooth speaker", "soundbar", "studio headphones", "portable speaker"]},
-    {"id": "phone_accessories", "name_ar": "اكسسوارات الجوال", "icon": "📱",
-     "keywords": ["phone charger fast", "power bank 20000", "phone case", "screen protector", "wireless charger", "car phone holder"]},
-    {"id": "smart_home", "name_ar": "المنزل الذكي", "icon": "💡",
-     "keywords": ["smart bulb", "smart plug", "security camera", "video doorbell", "smart speaker", "wifi extender"]},
-    {"id": "wearables", "name_ar": "الساعات الذكية واللياقة", "icon": "⌚",
-     "keywords": ["smart watch", "fitness tracker", "apple watch band", "heart rate monitor", "smart ring", "kids smart watch"]},
-    {"id": "gaming", "name_ar": "الألعاب والقيمنق", "icon": "🎮",
-     "keywords": ["gaming headset", "mechanical keyboard rgb", "gaming mouse", "gaming chair", "console controller", "gaming monitor"]},
-
-    # ── الأسرة والأطفال ─────────────────────────────
-    {"id": "kids_toys", "name_ar": "ألعاب الأطفال", "icon": "🧸",
-     "keywords": ["lego building blocks", "educational toys", "remote control car", "kids puzzle", "doll house", "stuffed animals"]},
-    {"id": "baby", "name_ar": "مستلزمات الأطفال الرضع", "icon": "👶",
-     "keywords": ["baby monitor", "baby stroller", "diaper bag", "baby bottle warmer", "baby carrier", "kids tablet"]},
-
-    # ── الرياضة والصحة ─────────────────────────────
-    {"id": "sports", "name_ar": "الرياضة واللياقة", "icon": "🏋️",
-     "keywords": ["adjustable dumbbells", "yoga mat", "resistance bands set", "treadmill foldable", "exercise bike", "protein shaker"]},
-    {"id": "outdoor", "name_ar": "الرحلات والتخييم", "icon": "⛺",
-     "keywords": ["camping tent", "portable cooler", "sleeping bag", "camping chair", "outdoor grill", "hiking backpack"]},
-
-    # ── أخرى مطلوبة سعودياً ─────────────────────────
-    {"id": "car", "name_ar": "اكسسوارات السيارة", "icon": "🚗",
-     "keywords": ["car vacuum", "dash cam", "car air freshener", "car seat cover", "tire inflator", "jump starter"]},
-    {"id": "office", "name_ar": "المكتب والعمل من المنزل", "icon": "💻",
-     "keywords": ["ergonomic office chair", "monitor stand", "desk lamp led", "laptop stand", "webcam hd", "wireless mouse"]},
-    {"id": "islamic", "name_ar": "المنتجات الإسلامية", "icon": "🕌",
-     "keywords": ["prayer mat", "quran reader pen", "digital tasbih", "azan clock", "prayer rug travel", "islamic decor"]},
+    {
+        "id": "household",
+        "name_ar": "مستلزمات المنزل",
+        "icon": "🏠",
+        "keywords": ["kitchen appliances", "vacuum cleaner", "air fryer", "coffee maker"],
+    },
+    {
+        "id": "gaming",
+        "name_ar": "أجهزة الألعاب",
+        "icon": "🎮",
+        "keywords": ["gaming headset", "gaming controller", "gaming keyboard", "gaming mouse"],
+    },
+    {
+        "id": "electronics",
+        "name_ar": "إلكترونيات",
+        "icon": "📱",
+        "keywords": ["wireless earbuds", "bluetooth speaker", "smart watch", "power bank"],
+    },
+    {
+        "id": "beauty",
+        "name_ar": "العناية والتجميل",
+        "icon": "💄",
+        "keywords": ["electric toothbrush", "hair dryer", "face wash", "perfume"],
+    },
+    {
+        "id": "sports",
+        "name_ar": "رياضة ولياقة",
+        "icon": "🏋️",
+        "keywords": ["yoga mat", "resistance bands", "water bottle", "fitness tracker"],
+    },
+    {
+        "id": "kids",
+        "name_ar": "منتجات الأطفال",
+        "icon": "🧸",
+        "keywords": ["educational toys", "lego", "baby monitor", "kids headphones"],
+    },
+    {
+        "id": "fashion",
+        "name_ar": "ملابس وأزياء",
+        "icon": "👗",
+        "keywords": ["sunglasses", "backpack", "wallet", "belt"],
+    },
+    {
+        "id": "office",
+        "name_ar": "مكتب وقرطاسية",
+        "icon": "📝",
+        "keywords": ["mechanical keyboard", "webcam", "desk lamp", "mouse pad"],
+    },
 ]
 
 _RAPIDAPI_HOST = "real-time-amazon-data.p.rapidapi.com"
 _BASE_URL = f"https://{_RAPIDAPI_HOST}"
+
+# ── خريطة التصنيف الداخلي → bestseller slug للسكرابر ────────────────────────────
+_BESTSELLER_SLUG_MAP = {
+    "groceries": "food-and-grocery",
+    "kitchen_appliances": "kitchen",
+    "kitchen_tools": "kitchen",
+    "cleaning": "kitchen",
+    "bedding": "home",
+    "home_decor": "home",
+    "perfumes": "beauty",
+    "skincare": "beauty",
+    "haircare": "beauty",
+    "personal_care": "beauty",
+    "audio": "electronics",
+    "phone_accessories": "wireless",
+    "smart_home": "amazon-devices",
+    "wearables": "electronics",
+    "gaming": "videogames",
+    "kids_toys": "toys",
+    "baby": "baby-products",
+    "sports": "sports",
+    "outdoor": "sports",
+    "car": "automotive",
+    "office": "office-products",
+    "islamic": "home",
+}
 
 
 def get_all_categories() -> list[dict]:
@@ -91,8 +110,30 @@ def _build_affiliate_url(asin: str, marketplace: str = "SA") -> str:
     return f"https://www.{domain}/dp/{asin}?tag={tag}"
 
 
+async def _scraper_search(keyword: str, marketplace: str) -> list[dict]:
+    """بحث في Amazon عبر السكرابر المجاني"""
+    from backend.services.amazon_scraper import search_amazon
+    results = await search_amazon(keyword, marketplace, num_results=10)
+    # تأكد من وجود affiliate_url
+    for r in results:
+        if not r.get("affiliate_url"):
+            r["affiliate_url"] = _build_affiliate_url(r["asin"], marketplace)
+    return results
+
+
+async def _scraper_bestsellers(category_id: str, marketplace: str) -> list[dict]:
+    """جلب الأكثر مبيعاً عبر السكرابر كـ fallback"""
+    from backend.services.amazon_scraper import get_bestsellers
+    slug = _BESTSELLER_SLUG_MAP.get(category_id, "aps")
+    results = await get_bestsellers(slug, marketplace)
+    for r in results:
+        if not r.get("affiliate_url"):
+            r["affiliate_url"] = _build_affiliate_url(r["asin"], marketplace)
+    return results
+
+
 async def _rapidapi_search(keyword: str, country: str, api_key: str) -> list[dict]:
-    """بحث في Amazon عبر RapidAPI /search endpoint"""
+    """بحث في Amazon عبر RapidAPI /search endpoint (fallback قديم)"""
     headers = {
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": _RAPIDAPI_HOST,
@@ -136,40 +177,13 @@ async def _rapidapi_search(keyword: str, country: str, api_key: str) -> list[dic
     return results
 
 
-# خريطة من id التصنيف الداخلي إلى category slug عند RapidAPI bestsellers
-_BESTSELLER_CATEGORY_MAP = {
-    "groceries": "grocery",
-    "kitchen_appliances": "kitchen",
-    "kitchen_tools": "kitchen",
-    "cleaning": "kitchen",
-    "bedding": "home",
-    "home_decor": "home",
-    "perfumes": "beauty",
-    "skincare": "beauty",
-    "haircare": "beauty",
-    "personal_care": "beauty",
-    "audio": "electronics",
-    "phone_accessories": "wireless",
-    "smart_home": "smart-home",
-    "wearables": "electronics",
-    "gaming": "videogames",
-    "kids_toys": "toys",
-    "baby": "baby-products",
-    "sports": "sports",
-    "outdoor": "sports",
-    "car": "automotive",
-    "office": "office-products",
-    "islamic": "home",
-}
-
-
 async def _rapidapi_bestsellers(category_id: str, country: str, api_key: str) -> list[dict]:
-    """جلب الأكثر مبيعاً للتصنيف كـ fallback"""
+    """جلب الأكثر مبيعاً للتصنيف عبر RapidAPI (fallback قديم)"""
     headers = {
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": _RAPIDAPI_HOST,
     }
-    category_slug = _BESTSELLER_CATEGORY_MAP.get(category_id, "aps")
+    category_slug = _BESTSELLER_SLUG_MAP.get(category_id, "aps")
     params = {"country": country, "category": category_slug, "page": "1"}
     try:
         timeout = aiohttp.ClientTimeout(total=25)
@@ -279,30 +293,13 @@ def _parse_product(item: dict, country: str) -> Optional[dict]:
     }
 
 
-_STOP_WORDS = {
-    "the", "a", "an", "for", "with", "and", "of", "to", "in", "on", "by",
-    "new", "best", "premium", "professional", "set", "kit", "pack", "size",
-}
-
-
-def _product_signature(title: str) -> str:
-    """تستخرج 'نوع' المنتج من العنوان لتجنب التكرار النوعي.
-    مثال: 'Anker Wireless Earbuds Pro' و 'Sony Wireless Earbuds Plus' → نفس النوع 'wireless earbuds'
-    """
-    if not title:
-        return ""
-    words = [w.lower().strip(".,!?-()[]{}") for w in title.split()]
-    meaningful = [w for w in words if w and w not in _STOP_WORDS and len(w) > 2 and not w.isdigit()]
-    return " ".join(meaningful[:2]) if len(meaningful) >= 2 else (meaningful[0] if meaningful else "")
-
-
 def _sort_and_deduplicate(products: list[dict]) -> list[dict]:
-    """إزالة التكرار وترتيب حسب الجودة + تنويع المنتجات"""
-    seen_asins = set()
+    """إزالة التكرار وترتيب حسب الجودة"""
+    seen = set()
     unique = []
     for p in products:
-        if p["asin"] not in seen_asins:
-            seen_asins.add(p["asin"])
+        if p["asin"] not in seen:
+            seen.add(p["asin"])
             unique.append(p)
 
     def score(p):
@@ -312,41 +309,22 @@ def _sort_and_deduplicate(products: list[dict]) -> list[dict]:
         return discount * 0.5 + rating * 10 + count / 1000
 
     unique.sort(key=score, reverse=True)
-
-    # تنويع: حد أقصى منتجين بنفس "نوع" المنتج (نفس بداية العنوان)
-    diverse = []
-    type_counts: dict[str, int] = {}
-    overflow = []  # المنتجات التي تجاوزت الحد، نرجع لها إذا لم نملأ 15
-    for p in unique:
-        sig = _product_signature(p.get("title", ""))
-        if type_counts.get(sig, 0) < 2:
-            diverse.append(p)
-            type_counts[sig] = type_counts.get(sig, 0) + 1
-        else:
-            overflow.append(p)
-        if len(diverse) >= 15:
-            break
-
-    # إذا حصلنا على أقل من 15، نملأ من overflow
-    if len(diverse) < 15:
-        diverse.extend(overflow[:15 - len(diverse)])
-
-    return diverse
+    return unique
 
 
-async def _ai_select_top7(products: list[dict], category_name: str) -> list[dict]:
+async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict]:
     """
-    يطلب من AI اختيار أفضل 7 منتجات من القائمة.
-    إذا فشل AI يُرجع أفضل 7 حسب الترتيب الحسابي.
+    يطلب من AI اختيار أفضل 5 منتجات من القائمة.
+    إذا فشل AI يُرجع أفضل 5 حسب الترتيب الحسابي.
     """
-    if len(products) <= 7:
+    if len(products) <= 5:
         return products
 
     try:
         from backend.services.ai_service import call_ai
 
         products_summary = []
-        for i, p in enumerate(products[:25]):
+        for i, p in enumerate(products[:20]):
             products_summary.append(
                 f"{i+1}. ASIN:{p['asin']} | {p['title'][:60]} | "
                 f"السعر:{p['price_current']} | الخصم:{p['discount_pct']}% | "
@@ -357,75 +335,71 @@ async def _ai_select_top7(products: list[dict], category_name: str) -> list[dict
 
 {chr(10).join(products_summary)}
 
-اختر أفضل 7 منتجات فقط بناءً على:
+اختر أفضل 5 منتجات فقط بناءً على:
 1. نسبة الخصم (كلما زادت كان أفضل)
 2. التقييم (كلما ارتفع كان أفضل)
 3. شعبية المنتج وعدد التقييمات
 4. قيمة المنتج (هل السعر مناسب بعد الخصم؟)
-5. تنوع المنتجات (اختر أنواعاً مختلفة قدر الإمكان)
 
 أجب بـ JSON فقط — مصفوفة من أرقام المنتجات المختارة (1-based) بالترتيب من الأفضل للأقل:
-{{"selected": [رقم1, رقم2, رقم3, رقم4, رقم5, رقم6, رقم7]}}
+{{"selected": [رقم1, رقم2, رقم3, رقم4, رقم5]}}
 
 لا تضف أي نص آخر خارج الـ JSON."""
 
         system = "أنت خبير في اكتشاف أفضل العروض على أمازون للسوق السعودي."
         raw = await call_ai(prompt, system=system)
 
-        import re
-        clean = re.sub(r"```(?:json)?\s*", "", raw or "").replace("```", "").strip()
-
-        match = re.search(r'\{[^{}]*"selected"[^{}]*\}', clean, re.DOTALL)
-        json_str = match.group(0) if match else None
-
-        if not json_str:
-            start = clean.find("{")
-            end = clean.rfind("}") + 1
-            if start >= 0 and end > start:
-                json_str = clean[start:end]
-
-        if json_str:
-            try:
-                parsed = json.loads(json_str)
-            except json.JSONDecodeError as e:
-                logger.warning(f"AI returned invalid JSON for '{category_name}': {e} — raw: {raw[:200]}")
-                parsed = None
-
-            if parsed:
-                indices = parsed.get("selected", [])
-                selected = []
-                for idx in indices:
-                    try:
-                        i = int(idx)
-                        if 1 <= i <= len(products):
-                            selected.append(products[i - 1])
-                    except (ValueError, TypeError):
-                        continue
-                if len(selected) >= 3:
-                    logger.info(f"AI اختار {len(selected)} منتجات لـ '{category_name}'")
-                    return selected[:7]
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(raw[start:end])
+            indices = parsed.get("selected", [])
+            selected = []
+            for idx in indices:
+                if 1 <= idx <= len(products):
+                    selected.append(products[idx - 1])
+            if len(selected) >= 3:
+                logger.info(f"AI اختار {len(selected)} منتجات لـ '{category_name}'")
+                return selected[:5]
     except Exception as exc:
         logger.warning(f"AI selection failed for '{category_name}': {exc} — using score-based fallback")
 
-    return products[:7]
+    return products[:5]
 
 
-async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = None) -> dict:
+async def discover_deals(category_ids: list[str]) -> dict:
     """
     الوظيفة الرئيسية: تجلب أفضل العروض للتصنيفات المحددة.
-    seen_asins: {category_id: [asin1, asin2, ...]} — ASINs سبق عرضها لهذا التصنيف (تُستبعد)
-    تُرجع: {"category_id": [list of 7 deals], ...}
+    تُرجع: {"category_id": [list of 5 deals], ...}
     """
     from backend.config import get_api_key, get_setting
 
-    api_key = get_api_key("rapidapi_key")
-    if not api_key:
-        raise ValueError("مفتاح RapidAPI غير موجود — أضفه من صفحة مفاتيح API")
-
     marketplace = get_setting("amazon_marketplace", "SA")
+    data_source = get_setting("amazon_data_source", "scraper")
+    api_key = get_api_key("rapidapi_key") if data_source != "scraper" else None
     seen_asins = seen_asins or {}
 
     results = {}
+
+    async def _search_kw(kw: str) -> list[dict]:
+        if data_source == "rapidapi" and api_key:
+            return await _rapidapi_search(kw, marketplace, api_key)
+        if data_source == "auto" and api_key:
+            r = await _scraper_search(kw, marketplace)
+            if not r:
+                r = await _rapidapi_search(kw, marketplace, api_key)
+            return r
+        return await _scraper_search(kw, marketplace)
+
+    async def _fallback_bestsellers(cat_id: str) -> list[dict]:
+        if data_source == "rapidapi" and api_key:
+            return await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+        if data_source == "auto" and api_key:
+            r = await _scraper_bestsellers(cat_id, marketplace)
+            if not r:
+                r = await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+            return r
+        return await _scraper_bestsellers(cat_id, marketplace)
 
     async def process_category(cat_id: str):
         category = _get_category(cat_id)
@@ -436,19 +410,17 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
         logger.info(f"جاري البحث في تصنيف: {category['name_ar']}")
         all_products = []
 
-        tasks = [
-            _rapidapi_search(kw, marketplace, api_key)
-            for kw in category["keywords"]
-        ]
+        tasks = [_search_kw(kw) for kw in category["keywords"]]
         search_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in search_results:
             if isinstance(result, list):
                 all_products.extend(result)
 
-        if len(all_products) < 7:
+        # fallback للأكثر مبيعاً إذا كانت النتائج قليلة
+        if len(all_products) < 5:
             logger.info(f"نتائج قليلة لـ '{category['name_ar']}' — جرّب bestsellers كـ fallback")
-            bestsellers = await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+            bestsellers = await _fallback_bestsellers(cat_id)
             all_products.extend(bestsellers)
 
         if not all_products:
@@ -464,26 +436,28 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
             logger.info(f"استبعدنا {before - len(all_products)} منتج سبق عرضه في '{category['name_ar']}'")
 
         if not all_products:
-            # إذا استُنفذت المنتجات، ارجع بدون استبعاد
             logger.info(f"استُنفذت المنتجات الجديدة في '{category['name_ar']}' — نعيد كل المنتجات")
-            tasks2 = [_rapidapi_search(kw, marketplace, api_key) for kw in category["keywords"]]
+            tasks2 = [_search_kw(kw) for kw in category["keywords"]]
             r2 = await asyncio.gather(*tasks2, return_exceptions=True)
             all_products = [p for res in r2 if isinstance(res, list) for p in res]
+
 
         # ترتيب وإزالة التكرار
         unique_sorted = _sort_and_deduplicate(all_products)
 
-        # AI يختار أفضل 7
-        top7 = await _ai_select_top7(unique_sorted, category["name_ar"])
+        # AI يختار أفضل 5
+        top5 = await _ai_select_top5(unique_sorted, category["name_ar"])
 
-        for p in top7:
+        # إضافة معلومات التصنيف
+        for p in top5:
             p["category_id"] = cat_id
             p["category_name"] = category["name_ar"]
             p["category_icon"] = category["icon"]
 
-        results[cat_id] = top7
-        logger.info(f"تصنيف '{category['name_ar']}': {len(top7)} منتج")
+        results[cat_id] = top5
+        logger.info(f"تصنيف '{category['name_ar']}': {len(top5)} منتج")
 
+    # معالجة متوازية لكل التصنيفات (بحد أقصى 3 متزامنة)
     semaphore = asyncio.Semaphore(3)
 
     async def process_with_semaphore(cat_id):

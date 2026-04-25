@@ -166,9 +166,28 @@ async def _rapidapi_get(path: str, params: dict) -> Optional[dict]:
 
 async def fetch_product_by_asin(asin: str, marketplace: str = "SA") -> Optional[dict]:
     """
-    يجلب بيانات المنتج من RapidAPI باستخدام ASIN.
-    يستخدم endpoint: /product-offers?asin=ASIN&country=SA
+    يجلب بيانات المنتج بـ ASIN.
+    يختار المصدر بناءً على إعداد amazon_data_source:
+      "scraper" → السكرابر المجاني دائماً
+      "auto"    → السكرابر أولاً، RapidAPI كـ fallback
+      "rapidapi" → RapidAPI مباشرة
     """
+    from backend.config import get_setting
+    source = get_setting("amazon_data_source", "scraper")
+
+    if source in ("scraper", "auto"):
+        try:
+            from backend.services.amazon_scraper import get_product_by_asin
+            result = await get_product_by_asin(asin, marketplace)
+            if result:
+                logger.info(f"Scraper ASIN {asin}: {result['title'][:50]}")
+                return result
+        except Exception as exc:
+            logger.warning(f"Scraper فشل لـ ASIN {asin}: {exc}")
+        if source == "scraper":
+            return None
+
+    # RapidAPI fallback
     country = _COUNTRY_MAP.get(marketplace, "SA")
     data = await _rapidapi_get("/product-offers", {
         "asin":    asin,
@@ -191,12 +210,25 @@ async def fetch_product_by_asin(asin: str, marketplace: str = "SA") -> Optional[
 
 async def search_via_rapidapi(query: str) -> Optional[dict]:
     """
-    يحاول البحث عن منتج في أمازون.
-    ملاحظة: /products/search يتطلب اشتراكاً منفصلاً.
-    إذا كانت query تبدو وكأنها ASIN (10 أحرف) → يستخدم /product-offers مباشرة.
+    يبحث عن منتج في أمازون.
+    يختار المصدر بناءً على إعداد amazon_data_source.
     """
     from backend.config import get_setting
     marketplace = get_setting("amazon_marketplace", "SA")
+    source = get_setting("amazon_data_source", "scraper")
+
+    if source in ("scraper", "auto"):
+        try:
+            from backend.services.amazon_scraper import search_amazon
+            results = await search_amazon(query, marketplace, num_results=10)
+            if results:
+                # أعد أفضل نتيجة (الأعلى خصماً وتقييماً)
+                best = max(results, key=lambda r: r.get("discount_pct", 0) * 0.5 + r.get("rating", 0) * 10)
+                return best
+        except Exception as exc:
+            logger.warning(f"Scraper search فشل لـ '{query}': {exc}")
+        if source == "scraper":
+            return None
 
     # إذا كانت query تبدو كـ ASIN → جرّب /product-offers مباشرة
     asin_match = re.fullmatch(r"[A-Z0-9]{10}", query.strip().upper())
