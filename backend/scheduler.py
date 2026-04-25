@@ -262,19 +262,25 @@ def refresh_schedule():
         parts = t.split(":")
         return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
 
-    # مواعيد النشر (publish_approved_products)
+    # مواعيد الجلب + النشر في كل موعد مجدول
     if get_setting("schedule_morning", True):
         h, m = parse_time(get_setting("time_morning", "08:00"))
+        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                          id="fetch_morning", replace_existing=True)
         scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
                           id="publish_morning", replace_existing=True)
 
     if get_setting("schedule_afternoon", True):
         h, m = parse_time(get_setting("time_afternoon", "14:00"))
+        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                          id="fetch_afternoon", replace_existing=True)
         scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
                           id="publish_afternoon", replace_existing=True)
 
     if get_setting("schedule_evening", True):
         h, m = parse_time(get_setting("time_evening", "20:00"))
+        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                          id="fetch_evening", replace_existing=True)
         scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
                           id="publish_evening", replace_existing=True)
 

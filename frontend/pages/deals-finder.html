@@ -554,8 +554,24 @@
     } catch (err) {
       clearInterval(progressInterval);
       progressBar.style.width = '0%';
+      const isKeyError = err.message && err.message.includes('RapidAPI');
       progressText.textContent = '❌ ' + err.message;
-      showToast(err.message, 'error');
+      if (isKeyError) {
+        showToast('مفتاح RapidAPI غير موجود — أضفه من صفحة الإعدادات', 'error');
+        // أظهر رسالة في قسم النتائج
+        document.getElementById('results-section').classList.remove('hidden');
+        document.getElementById('results-content').innerHTML = `
+          <div class="card"><div class="card-body" style="text-align:center;padding:48px;">
+            <div style="font-size:48px;margin-bottom:16px;">🔑</div>
+            <p style="font-weight:600;margin-bottom:8px;">مفتاح RapidAPI غير موجود</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+              أضف مفتاح RapidAPI من صفحة الإعدادات ← مفاتيح API ← RapidAPI Key
+            </p>
+            <a href="#" onclick="window.navigateTo && window.navigateTo('settings')" class="btn btn-primary btn-sm">الذهاب للإعدادات</a>
+          </div></div>`;
+      } else {
+        showToast(err.message, 'error');
+      }
     } finally {
       btn.disabled = false;
       btnText.textContent = 'اكتشف أفضل العروض';
@@ -570,8 +586,15 @@
     selectedDeals.clear();
     document.getElementById('results-section').classList.add('hidden');
     document.getElementById('bottom-bar').classList.add('hidden');
-    document.getElementById('bottom-bar-spacer').classList.add('hidden');
+    document.getElementById('bottom-bar-spacer')?.classList.add('hidden');
     showToast('تم مسح تاريخ الاكتشاف', 'info');
+  };
+
+  // إعادة البحث من جديد (تصفير seen_asins + بدء اكتشاف جديد)
+  window.resetSeenAndDiscover = function() {
+    seenAsins = {};
+    showToast('تم تصفير الفلاتر — يمكنك الاكتشاف من جديد', 'info');
+    window.startDiscovery();
   };
 
   // ── عرض النتائج (مكدّسة) ────────────────────────────────────────────────────
@@ -619,7 +642,15 @@
             </div>`;
         }
         if (batchTotal === 0) {
-          html += `<p style="text-align:center;color:var(--text-tertiary);padding:24px 0;">لم يُعثر على عروض جديدة في هذه الدفعة</p>`;
+          html += `<div style="text-align:center;padding:32px 0;">
+            <div style="font-size:36px;margin-bottom:12px;">🔍</div>
+            <p style="color:var(--text-secondary);margin-bottom:8px;">لم يُعثر على عروض في هذه الدفعة</p>
+            <p style="font-size:12px;color:var(--text-tertiary);">
+              تأكد من وجود مفتاح RapidAPI في <a href="#" onclick="window.navigateTo && window.navigateTo('settings')" style="color:var(--accent);">الإعدادات</a>،
+              أو جرّب تصنيفات أخرى.
+            </p>
+            <button class="btn btn-secondary btn-sm" style="margin-top:12px;" onclick="resetSeenAndDiscover()">🔄 إعادة البحث من جديد</button>
+          </div>`;
         }
         html += `</div>`;
       } else {
@@ -841,9 +872,10 @@
     btn.textContent = '⏳ جاري الإضافة...';
 
     const dealsToAdd = generatedContent
-      .filter(item => !item.error)
-      .map((item, idx) => {
-        const textarea = document.getElementById(`content-${idx}`);
+      .map((item, originalIdx) => ({ item, originalIdx }))
+      .filter(({ item }) => !item.error)
+      .map(({ item, originalIdx }) => {
+        const textarea = document.getElementById(`content-${originalIdx}`);
         return {
           ...item.deal,
           content: textarea ? textarea.value : item.content,
