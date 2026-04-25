@@ -24,7 +24,7 @@ async def fetch_and_queue():
     1. جلب الترندات
     2. البحث في أمازون عن كل منتج
     3. توليد المحتوى بالذكاء الاصطناعي
-    4. إضافة للقائمة أو نشر مباشرة حسب الإعدادات
+    4. إضافة للقائمة (pending) — النشر يتم لاحقاً حسب الجدولة
     """
     from backend.config import get_setting, SessionLocal
     from backend.models import Product
@@ -42,13 +42,11 @@ async def fetch_and_queue():
     min_rating = get_setting("min_rating", 4.0)
     min_views = get_setting("min_views", 100000)
     auto_approve = get_setting("auto_approve", False)
-    primary_llm = get_setting("primary_llm", "claude-sonnet-4-5")
+    primary_llm = get_setting("primary_llm", "")
 
-    # 1. جلب الترندات
     trends = await fetch_trends()
     logger.info(f"تم جلب {len(trends)} ترند")
 
-    # 2. معالجة كل ترند بالتوازي (مع حد أقصى 3 بالتوازي)
     semaphore = asyncio.Semaphore(3)
 
     async def process_trend(trend: dict):
@@ -78,35 +76,28 @@ async def _process_single_trend(
     from backend.services.publisher import publish_product
 
     try:
-        # فلترة بالمشاهدات
         if trend.get("source_views", 0) < min_views and trend.get("source") != "keyword":
             return
 
-        # استخرج اسم المنتج
         title = trend.get("title", "")
         if trend.get("caption") and not trend.get("title_ar"):
             title = await extract_product_name_with_ai(trend.get("caption", title))
 
-        # البحث في أمازون
         amazon = await search_product(title)
         if not amazon:
             return
 
-        # فلترة
         if amazon.get("discount_pct", 0) < min_discount:
             return
         if amazon.get("rating", 0) < min_rating:
             return
 
-        # تحقق من التكرار
         if await is_product_posted_before(amazon["asin"]):
             logger.info(f"المنتج {amazon['asin']} منشور سابقاً — تخطي")
             return
 
-        # توليد المحتوى
-        content, model_used = await generate_content(amazon, llm=primary_llm)
+        content, model_used = await generate_content(amazon, llm=primary_llm or "auto")
 
-        # حفظ في قاعدة البيانات
         with SessionLocal() as db:
             product = Product(
                 title=amazon.get("title", title),
@@ -134,12 +125,72 @@ async def _process_single_trend(
 
         logger.info(f"تم إضافة المنتج {amazon['asin']} — الحالة: {product.status}")
 
-        # نشر فوري إذا كانت الموافقة التلقائية مفعّلة
+        # نشر فوري فقط إذا كانت الموافقة التلقائية مفعّلة
         if auto_approve:
             await publish_product(product_id)
 
     except Exception as exc:
         logger.error(f"خطأ في معالجة الترند {trend.get('title', '')}: {exc}")
+
+
+# ── نشر المنتجات المعتمدة في الموعد المجدول ──────────────────────────────────────
+async def publish_approved_products():
+    """
+    تُشغَّل في كل موعد مجدول.
+    تنشر المنتجات المعتمدة (approved) بالترتيب:
+    — عرض اليوم أولاً، ثم الأقدم.
+    """
+    from backend.config import get_setting, SessionLocal
+    from backend.models import Product
+    from backend.services.publisher import publish_product
+
+    if not get_setting("system_enabled", True):
+        return
+
+    posts_per_slot = get_setting("posts_per_slot", 1)
+    interval_min = get_setting("post_interval_minutes", 30)
+
+    with SessionLocal() as db:
+        products = (
+            db.query(Product)
+            .filter(Product.status == "approved")
+            .order_by(Product.is_deal_of_day.desc(), Product.created_at.asc())
+            .limit(posts_per_slot)
+            .all()
+        )
+        ids = [p.id for p in products]
+
+    if not ids:
+        logger.info("لا توجد منتجات معتمدة للنشر في هذا الموعد")
+        return
+
+    logger.info(f"نشر {len(ids)} منتج معتمد...")
+    for i, pid in enumerate(ids):
+        if i > 0 and interval_min > 0:
+            await asyncio.sleep(interval_min * 60)
+        try:
+            await publish_product(pid)
+        except Exception as exc:
+            logger.error(f"خطأ في نشر المنتج {pid}: {exc}")
+
+
+# ── الاكتشاف التلقائي اليومي للعروض ─────────────────────────────────────────────
+async def auto_discover_daily():
+    """اكتشاف تلقائي يومي للعروض وإضافتها لقائمة الانتظار"""
+    from backend.config import get_setting
+
+    if not get_setting("auto_discover_enabled", False):
+        return
+
+    categories_count = get_setting("auto_discover_categories_count", 5)
+    logger.info(f"بدء الاكتشاف التلقائي اليومي — {categories_count} تصنيف")
+
+    try:
+        from backend.services.deals_finder_service import auto_discover_and_queue
+        result = await auto_discover_and_queue(max_categories=categories_count)
+        logger.info(f"اكتشاف تلقائي: {result.get('added', 0)} منتج أُضيف للانتظار")
+    except Exception as exc:
+        logger.error(f"خطأ في الاكتشاف التلقائي: {exc}")
 
 
 # ── تنظيف السجلات القديمة ─────────────────────────────────────────────────────────
@@ -185,7 +236,6 @@ def setup_scheduler():
         replace_existing=True,
     )
 
-    # تحديث الجدولة من الإعدادات
     refresh_schedule()
 
     if not scheduler.running:
@@ -200,31 +250,39 @@ def refresh_schedule():
     scheduler = get_scheduler()
 
     # احذف المهام القديمة
-    for job_id in ["fetch_morning", "fetch_afternoon", "fetch_evening"]:
+    for job_id in ["fetch_morning", "fetch_afternoon", "fetch_evening",
+                   "publish_morning", "publish_afternoon", "publish_evening",
+                   "auto_discover"]:
         try:
             scheduler.remove_job(job_id)
         except Exception:
             pass
 
-    schedule_morning = get_setting("schedule_morning", True)
-    schedule_afternoon = get_setting("schedule_afternoon", True)
-    schedule_evening = get_setting("schedule_evening", True)
-
     def parse_time(t: str):
         parts = t.split(":")
         return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
 
-    if schedule_morning:
+    # مواعيد النشر (publish_approved_products)
+    if get_setting("schedule_morning", True):
         h, m = parse_time(get_setting("time_morning", "08:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m, id="fetch_morning", replace_existing=True)
+        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                          id="publish_morning", replace_existing=True)
 
-    if schedule_afternoon:
+    if get_setting("schedule_afternoon", True):
         h, m = parse_time(get_setting("time_afternoon", "14:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m, id="fetch_afternoon", replace_existing=True)
+        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                          id="publish_afternoon", replace_existing=True)
 
-    if schedule_evening:
+    if get_setting("schedule_evening", True):
         h, m = parse_time(get_setting("time_evening", "20:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m, id="fetch_evening", replace_existing=True)
+        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                          id="publish_evening", replace_existing=True)
+
+    # الاكتشاف التلقائي اليومي (إذا كان مفعّلاً)
+    if get_setting("auto_discover_enabled", False):
+        h, m = parse_time(get_setting("auto_discover_time", "07:00"))
+        scheduler.add_job(auto_discover_daily, "cron", hour=h, minute=m,
+                          id="auto_discover", replace_existing=True)
 
     logger.info("تم تحديث الجدولة")
 

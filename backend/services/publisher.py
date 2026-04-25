@@ -25,12 +25,6 @@ async def publish_product(product_id: int) -> dict:
 
         content = product.ai_content or ""
         image_url = product.image_url or ""
-        product_data = {
-            "id": product.id,
-            "title": product.title,
-            "content": content,
-            "image_url": image_url,
-        }
 
     enable_telegram = get_setting("enable_telegram", True)
     enable_whatsapp = get_setting("enable_whatsapp", False)
@@ -46,6 +40,7 @@ async def publish_product(product_id: int) -> dict:
 
     results = {}
     errors = {}
+    post_ids = {}  # channel → post_id
 
     if tasks:
         channel_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -54,29 +49,37 @@ async def publish_product(product_id: int) -> dict:
                 results[channel] = False
                 errors[channel] = str(result)
             else:
-                success, error_msg = result if isinstance(result, tuple) else (result, None)
+                # result = (success, error_msg) or (success, error_msg, post_id)
+                if isinstance(result, tuple) and len(result) >= 3:
+                    success, error_msg, post_id = result[0], result[1], result[2]
+                elif isinstance(result, tuple):
+                    success, error_msg = result
+                    post_id = None
+                else:
+                    success, error_msg, post_id = result, None, None
+
                 results[channel] = success
                 if error_msg:
                     errors[channel] = error_msg
+                if post_id:
+                    post_ids[channel] = post_id
 
-    # سجّل النتائج في قاعدة البيانات
-    _log_results(product_id, results, errors)
+    _log_results(product_id, results, errors, post_ids)
 
-    # حدّث حالة المنتج
     all_success = any(results.values()) if results else False
-    _update_product_status(product_id, "published" if all_success else "failed")
+    _update_product_status(product_id, "published" if all_success else "failed", post_ids)
 
     return {**results, "errors": errors, "success": all_success}
 
 
 # ── تيليغرام ─────────────────────────────────────────────────────────────────────
-async def publish_to_telegram(content: str, image_url: str = "") -> tuple[bool, Optional[str]]:
+async def publish_to_telegram(content: str, image_url: str = "") -> tuple:
     from backend.config import get_api_key
     token = get_api_key("telegram_token")
     channel_id = get_api_key("telegram_channel_id")
 
     if not token or not channel_id:
-        return False, "مفاتيح Telegram غير مكتملة"
+        return False, "مفاتيح Telegram غير مكتملة", None
 
     import aiohttp
 
@@ -93,11 +96,10 @@ async def publish_to_telegram(content: str, image_url: str = "") -> tuple[bool, 
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     data = await resp.json()
                     if data.get("ok"):
-                        return True, None
-                    # إذا فشلت الصورة، حاول إرسال نص فقط
+                        msg_id = str(data.get("result", {}).get("message_id", ""))
+                        return True, None, msg_id
                     logger.warning(f"فشل إرسال الصورة لـ Telegram: {data.get('description')}")
 
-            # إرسال نص فقط
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {
                 "chat_id": channel_id,
@@ -108,27 +110,28 @@ async def publish_to_telegram(content: str, image_url: str = "") -> tuple[bool, 
             async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 data = await resp.json()
                 if data.get("ok"):
-                    return True, None
-                return False, data.get("description", "خطأ غير معروف")
+                    msg_id = str(data.get("result", {}).get("message_id", ""))
+                    return True, None, msg_id
+                return False, data.get("description", "خطأ غير معروف"), None
 
     except Exception as exc:
-        return False, str(exc)
+        return False, str(exc), None
 
 
 async def test_telegram() -> dict:
-    success, error = await publish_to_telegram("🤖 اختبار النظام — نظام الإحالة يعمل بنجاح ✓")
+    success, error, _ = await publish_to_telegram("🤖 اختبار النظام — نظام الإحالة يعمل بنجاح ✓")
     return {"success": success, "message": "متصل ✓ — رسالة اختبار أُرسلت" if success else f"خطأ: {error}"}
 
 
 # ── واتساب (UltraMsg) ──────────────────────────────────────────────────────────
-async def publish_to_whatsapp(content: str, image_url: str = "") -> tuple[bool, Optional[str]]:
+async def publish_to_whatsapp(content: str, image_url: str = "") -> tuple:
     from backend.config import get_api_key
     instance_id = get_api_key("ultramsg_instance")
     token = get_api_key("ultramsg_token")
     to_number = get_api_key("whatsapp_number")
 
     if not all([instance_id, token, to_number]):
-        return False, "إعدادات UltraMsg غير مكتملة"
+        return False, "إعدادات UltraMsg غير مكتملة", None
 
     import aiohttp
 
@@ -146,27 +149,27 @@ async def publish_to_whatsapp(content: str, image_url: str = "") -> tuple[bool, 
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     data = await resp.json()
                     if data.get("sent") == "true" or data.get("sent") is True:
-                        return True, None
+                        return True, None, None
 
             url = f"{base_url}/messages/chat"
             payload = {"token": token, "to": to_number, "body": content}
             async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 data = await resp.json()
                 if data.get("sent") == "true" or data.get("sent") is True:
-                    return True, None
-                return False, str(data)
+                    return True, None, None
+                return False, str(data), None
 
     except Exception as exc:
-        return False, str(exc)
+        return False, str(exc), None
 
 
 async def test_whatsapp() -> dict:
-    success, error = await publish_to_whatsapp("🤖 اختبار النظام — نظام الإحالة يعمل بنجاح ✓")
+    success, error, _ = await publish_to_whatsapp("🤖 اختبار النظام — نظام الإحالة يعمل بنجاح ✓")
     return {"success": success, "message": "متصل ✓" if success else f"خطأ: {error}"}
 
 
 # ── منصة X (Twitter) ──────────────────────────────────────────────────────────
-async def publish_to_x(content: str, image_url: str = "") -> tuple[bool, Optional[str]]:
+async def publish_to_x(content: str, image_url: str = "") -> tuple:
     from backend.config import get_api_key
     api_key = get_api_key("x_api_key")
     api_secret = get_api_key("x_api_secret")
@@ -174,7 +177,7 @@ async def publish_to_x(content: str, image_url: str = "") -> tuple[bool, Optiona
     access_secret = get_api_key("x_access_secret")
 
     if not all([api_key, api_secret, access_token, access_secret]):
-        return False, "مفاتيح X API غير مكتملة"
+        return False, "مفاتيح X API غير مكتملة", None
 
     try:
         import tweepy
@@ -186,12 +189,10 @@ async def publish_to_x(content: str, image_url: str = "") -> tuple[bool, Optiona
             access_token_secret=access_secret,
         )
 
-        # اقتطع المحتوى بذكاء مع الاحتفاظ بالرابط
         tweet_text = _trim_for_x(content, 280)
         media_ids = []
 
         if image_url:
-            # رفع الصورة عبر API v1.1
             auth = tweepy.OAuth1UserHandler(api_key, api_secret, access_token, access_secret)
             api_v1 = tweepy.API(auth)
             try:
@@ -216,32 +217,27 @@ async def publish_to_x(content: str, image_url: str = "") -> tuple[bool, Optiona
 
         response = await client.create_tweet(**kwargs)
         if response.data:
-            return True, None
-        return False, "لم يتم إنشاء التغريدة"
+            tweet_id = str(response.data.get("id", ""))
+            return True, None, tweet_id
+        return False, "لم يتم إنشاء التغريدة", None
 
     except ImportError:
-        return False, "tweepy غير مثبتة"
+        return False, "tweepy غير مثبتة", None
     except Exception as exc:
-        return False, str(exc)
+        return False, str(exc), None
 
 
 def _trim_for_x(content: str, max_len: int = 280) -> str:
-    """اقتطع المحتوى مع الاحتفاظ بالرابط"""
     if len(content) <= max_len:
         return content
-
-    # حاول استخراج الرابط
     import re
     urls = re.findall(r'https?://\S+', content)
     last_url = urls[-1] if urls else ""
-
     if last_url:
-        # احجز مساحة للرابط + مسافة + ...
         url_len = len(last_url)
         trim_target = max_len - url_len - 5
         trimmed = content[:trim_target].rstrip()
         return f"{trimmed}...\n{last_url}"
-
     return content[:max_len - 3] + "..."
 
 
@@ -254,9 +250,10 @@ async def test_x_connection() -> dict:
 
 
 # ── مساعدات ──────────────────────────────────────────────────────────────────────
-def _log_results(product_id: int, results: dict, errors: dict):
+def _log_results(product_id: int, results: dict, errors: dict, post_ids: dict = None):
     from backend.config import SessionLocal
     from backend.models import PublishLog
+    post_ids = post_ids or {}
     try:
         with SessionLocal() as db:
             for channel, success in results.items():
@@ -264,6 +261,7 @@ def _log_results(product_id: int, results: dict, errors: dict):
                     product_id=product_id,
                     channel=channel,
                     success=success,
+                    post_id=post_ids.get(channel),
                     error_message=errors.get(channel),
                     published_at=datetime.utcnow(),
                 )
@@ -273,9 +271,10 @@ def _log_results(product_id: int, results: dict, errors: dict):
         logger.error(f"خطأ في تسجيل نتائج النشر: {exc}")
 
 
-def _update_product_status(product_id: int, status: str):
+def _update_product_status(product_id: int, status: str, post_ids: dict = None):
     from backend.config import SessionLocal
     from backend.models import Product
+    post_ids = post_ids or {}
     try:
         with SessionLocal() as db:
             product = db.get(Product, product_id)
@@ -283,6 +282,10 @@ def _update_product_status(product_id: int, status: str):
                 product.status = status
                 if status == "published":
                     product.published_at = datetime.utcnow()
+                if post_ids.get("telegram"):
+                    product.telegram_post_id = post_ids["telegram"]
+                if post_ids.get("x"):
+                    product.x_tweet_id = post_ids["x"]
                 db.commit()
     except Exception as exc:
         logger.error(f"خطأ في تحديث حالة المنتج: {exc}")

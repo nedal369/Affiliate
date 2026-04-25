@@ -227,6 +227,13 @@ DEFAULT_SETTINGS = {
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
+    # ── النشر المتقدم ─────────────────────────────────────
+    "posts_per_slot": 1,           # عدد المنشورات في كل موعد جدولة
+    "post_interval_minutes": 30,   # الفترة بين المنشورات في نفس الموعد (دقيقة)
+    # ── الاكتشاف التلقائي ─────────────────────────────────
+    "auto_discover_enabled": False,
+    "auto_discover_time": "07:00",
+    "auto_discover_categories_count": 5,   # عدد التصنيفات المراد اكتشافها
 }
 
 
@@ -242,9 +249,29 @@ def init_default_settings():
 def init_db():
     from backend import models  # noqa — ensure models are registered
     Base.metadata.create_all(bind=engine)
+    _migrate_db()
     init_default_settings()
     # ملاحظة: إنشاء Admin يتم في الخلفية من main.py لتجنب blocking الـ startup
     logger.info(f"قاعدة البيانات جاهزة: {DB_PATH}")
+
+
+def _migrate_db():
+    """إضافة الأعمدة الجديدة إذا لم تكن موجودة — SQLite لا يدعم إضافتها تلقائياً"""
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE products ADD COLUMN is_deal_of_day BOOLEAN DEFAULT 0",
+        "ALTER TABLE products ADD COLUMN total_clicks INTEGER DEFAULT 0",
+        "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
+        "ALTER TABLE products ADD COLUMN x_tweet_id VARCHAR(100)",
+        "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # العمود موجود مسبقاً — تجاهل
 
 
 def create_default_admin():

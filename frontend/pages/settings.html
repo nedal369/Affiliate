@@ -142,6 +142,55 @@ function renderSettings() {
       </div>
     </div>
 
+    <!-- قسم 2ب: إعدادات النشر المتقدمة -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">📅 إعدادات النشر المتقدمة</span></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">عدد المنشورات في كل موعد</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="number" class="form-control" style="width:100px;" min="1" max="10"
+              value="${s.posts_per_slot || 1}" onchange="setVal('posts_per_slot', this)">
+            <span class="text-secondary text-sm">منشور في الموعد الواحد (صباحي / ظهري / مسائي)</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">الفترة بين المنشورات (دقيقة)</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="number" class="form-control" style="width:100px;" min="5" max="240"
+              value="${s.post_interval_minutes || 30}" onchange="setVal('post_interval_minutes', this)">
+            <span class="text-secondary text-sm">عند النشر لأكثر من منشور في موعد واحد</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- قسم 2ج: الاكتشاف التلقائي اليومي -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">🤖 الاكتشاف التلقائي اليومي</span></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">تفعيل الاكتشاف التلقائي</div>
+            <div class="toggle-desc">يكتشف أفضل العروض يومياً ويضيفها لقائمة الانتظار تلقائياً</div>
+          </div>
+          <label class="toggle"><input type="checkbox" ${s.auto_discover_enabled ? 'checked' : ''} onchange="toggle('auto_discover_enabled', this)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label class="form-label">وقت الاكتشاف اليومي</label>
+          <input type="time" class="form-control" style="width:130px;" value="${s.auto_discover_time || '07:00'}" onchange="setVal('auto_discover_time', this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">عدد التصنيفات المراد اكتشافها</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="number" class="form-control" style="width:100px;" min="1" max="10"
+              value="${s.auto_discover_categories_count || 5}" onchange="setVal('auto_discover_categories_count', this)">
+            <span class="text-secondary text-sm">من أوائل التصنيفات المتاحة (1-10)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- قسم 3: إعدادات النشر -->
     <div class="card mb-4">
       <div class="card-header"><span class="card-title">📤 إعدادات النشر</span></div>

@@ -493,3 +493,85 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
     await asyncio.gather(*[process_with_semaphore(cid) for cid in category_ids])
 
     return results
+
+
+async def auto_discover_and_queue(
+    max_categories: int = 5,
+    products_per_category: int = 3,
+) -> dict:
+    """
+    اكتشاف تلقائي: يختار أشهر التصنيفات، يجلب العروض، يولّد المحتوى، يضيفها للانتظار.
+    يُرجع: {"added": N, "skipped": N, "categories": [...]}
+    """
+    from backend.services.ai_service import generate_content
+    from backend.services.amazon_service import is_product_posted_before
+    from backend.config import SessionLocal, get_setting
+    from backend.models import Product
+
+    # اختار أول max_categories من القائمة (الأشهر في السوق السعودي)
+    selected_cats = [c["id"] for c in CATEGORIES[:max_categories]]
+
+    logger.info(f"اكتشاف تلقائي: {selected_cats}")
+
+    # اكتشف العروض
+    deals_by_cat = await discover_deals(selected_cats)
+
+    primary_llm = get_setting("primary_llm", "auto") or "auto"
+    added = 0
+    skipped = 0
+    processed_categories = []
+
+    for cat_id, deals in deals_by_cat.items():
+        if not deals:
+            continue
+
+        # خذ أفضل products_per_category منتج
+        top_deals = deals[:products_per_category]
+        cat_added = 0
+
+        for deal in top_deals:
+            asin = deal.get("asin", "")
+            try:
+                if asin and await is_product_posted_before(asin):
+                    skipped += 1
+                    continue
+
+                # ولّد المحتوى
+                content, model_used = await generate_content(deal, llm=primary_llm)
+                title = deal.get("title", "")
+
+                with SessionLocal() as db:
+                    product = Product(
+                        title=title,
+                        title_ar=title,
+                        source="deals_finder",
+                        amazon_asin=asin,
+                        amazon_url=deal.get("amazon_url", ""),
+                        affiliate_url=deal.get("affiliate_url", ""),
+                        price_original=deal.get("price_original", 0),
+                        price_current=deal.get("price_current", 0),
+                        discount_pct=deal.get("discount_pct", 0),
+                        rating=deal.get("rating", 0),
+                        rating_count=deal.get("rating_count", 0),
+                        image_url=deal.get("image_url", ""),
+                        ai_content=content,
+                        ai_model_used=model_used,
+                        status="pending",
+                    )
+                    db.add(product)
+                    db.commit()
+
+                added += 1
+                cat_added += 1
+            except Exception as exc:
+                logger.error(f"خطأ في إضافة {asin} للانتظار: {exc}")
+
+        if cat_added > 0:
+            processed_categories.append({
+                "id": cat_id,
+                "name": next((c["name_ar"] for c in CATEGORIES if c["id"] == cat_id), cat_id),
+                "added": cat_added,
+            })
+
+    logger.info(f"اكتشاف تلقائي اكتمل: {added} أُضيف، {skipped} مكرر")
+    return {"added": added, "skipped": skipped, "categories": processed_categories}
