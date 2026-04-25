@@ -326,28 +326,28 @@ async def fetch_product_data(url: str) -> dict:
     if asin:
         data["amazon_asin"] = asin
 
-    # ② إذا كان رابط أمازون وعندنا ASIN → جرّب RapidAPI أولاً (أسرع وأدق)
+    # ② إذا كان رابط أمازون وعندنا ASIN → جرّب السكرابر/RapidAPI أولاً (أسرع وأدق)
     if asin and _is_amazon_url(url):
         try:
-            from backend.config import get_api_key, get_setting
+            from backend.config import get_setting
             from backend.services.rapidapi_amazon import fetch_product_by_asin
-            if get_api_key("rapidapi_key"):
-                marketplace = get_setting("amazon_marketplace", "SA")
-                rapid_data = await fetch_product_by_asin(asin, marketplace)
-                if rapid_data and rapid_data.get("title"):
-                    data["title"]          = rapid_data.get("title")
-                    data["price_current"]  = rapid_data.get("price_current", 0.0)
-                    data["price_original"] = rapid_data.get("price_original", 0.0)
-                    data["discount_pct"]   = rapid_data.get("discount_pct", 0)
-                    data["rating"]         = rapid_data.get("rating", 0.0)
-                    data["rating_count"]   = rapid_data.get("rating_count", 0)
-                    if rapid_data.get("image_url"):
-                        data["image_url"]  = rapid_data["image_url"]
-                    data["fetch_source"]   = "rapidapi"
-                    logger.info(f"link_fetcher: RapidAPI نجح لـ ASIN {asin}")
-                    return data
+            marketplace = get_setting("amazon_marketplace", "SA")
+            rapid_data = await fetch_product_by_asin(asin, marketplace)
+            if rapid_data and rapid_data.get("title"):
+                data["title"]          = rapid_data.get("title")
+                data["price_current"]  = rapid_data.get("price_current", 0.0)
+                data["price_original"] = rapid_data.get("price_original", 0.0)
+                data["discount_pct"]   = rapid_data.get("discount_pct", 0)
+                data["rating"]         = rapid_data.get("rating", 0.0)
+                data["rating_count"]   = rapid_data.get("rating_count", 0)
+                if rapid_data.get("image_url"):
+                    data["image_url"]  = rapid_data["image_url"]
+                src = rapid_data.get("source", "scraper")
+                data["fetch_source"]   = src
+                logger.info(f"link_fetcher: {src} نجح لـ ASIN {asin}")
+                return data
         except Exception as exc:
-            logger.warning(f"link_fetcher: RapidAPI فشل لـ {asin}: {exc}")
+            logger.warning(f"link_fetcher: جلب ASIN فشل لـ {asin}: {exc}")
 
     # ③ اجلب HTML الصفحة
     html = await _fetch_html(url)

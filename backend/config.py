@@ -231,6 +231,9 @@ DEFAULT_SETTINGS = {
     "auto_discover_enabled": False,
     "auto_discover_time": "07:00",
     "auto_discover_categories_count": 5,   # عدد التصنيفات المراد اكتشافها
+    # ── السكرابر المجاني ──────────────────────────────────
+    "amazon_data_source": "scraper",       # "scraper" | "rapidapi" | "auto"
+    "scraper_cache_ttl_hours": 6,
 }
 
 
@@ -268,6 +271,12 @@ def _migrate_db():
         "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
         "ALTER TABLE products ADD COLUMN x_tweet_id VARCHAR(100)",
         "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
+        # جدول كاش السكرابر
+        """CREATE TABLE IF NOT EXISTS scraper_cache (
+            cache_key VARCHAR(255) PRIMARY KEY,
+            payload TEXT NOT NULL,
+            fetched_at DATETIME
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

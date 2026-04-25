@@ -67,6 +67,32 @@ CATEGORIES = [
 _RAPIDAPI_HOST = "real-time-amazon-data.p.rapidapi.com"
 _BASE_URL = f"https://{_RAPIDAPI_HOST}"
 
+# ── خريطة التصنيف الداخلي → bestseller slug للسكرابر ────────────────────────────
+_BESTSELLER_SLUG_MAP = {
+    "groceries": "food-and-grocery",
+    "kitchen_appliances": "kitchen",
+    "kitchen_tools": "kitchen",
+    "cleaning": "kitchen",
+    "bedding": "home",
+    "home_decor": "home",
+    "perfumes": "beauty",
+    "skincare": "beauty",
+    "haircare": "beauty",
+    "personal_care": "beauty",
+    "audio": "electronics",
+    "phone_accessories": "wireless",
+    "smart_home": "amazon-devices",
+    "wearables": "electronics",
+    "gaming": "videogames",
+    "kids_toys": "toys",
+    "baby": "baby-products",
+    "sports": "sports",
+    "outdoor": "sports",
+    "car": "automotive",
+    "office": "office-products",
+    "islamic": "home",
+}
+
 
 def get_all_categories() -> list[dict]:
     return [{"id": c["id"], "name_ar": c["name_ar"], "icon": c["icon"]} for c in CATEGORIES]
@@ -84,8 +110,30 @@ def _build_affiliate_url(asin: str, marketplace: str = "SA") -> str:
     return f"https://www.{domain}/dp/{asin}?tag={tag}"
 
 
+async def _scraper_search(keyword: str, marketplace: str) -> list[dict]:
+    """بحث في Amazon عبر السكرابر المجاني"""
+    from backend.services.amazon_scraper import search_amazon
+    results = await search_amazon(keyword, marketplace, num_results=10)
+    # تأكد من وجود affiliate_url
+    for r in results:
+        if not r.get("affiliate_url"):
+            r["affiliate_url"] = _build_affiliate_url(r["asin"], marketplace)
+    return results
+
+
+async def _scraper_bestsellers(category_id: str, marketplace: str) -> list[dict]:
+    """جلب الأكثر مبيعاً عبر السكرابر كـ fallback"""
+    from backend.services.amazon_scraper import get_bestsellers
+    slug = _BESTSELLER_SLUG_MAP.get(category_id, "aps")
+    results = await get_bestsellers(slug, marketplace)
+    for r in results:
+        if not r.get("affiliate_url"):
+            r["affiliate_url"] = _build_affiliate_url(r["asin"], marketplace)
+    return results
+
+
 async def _rapidapi_search(keyword: str, country: str, api_key: str) -> list[dict]:
-    """بحث في Amazon عبر RapidAPI /search endpoint"""
+    """بحث في Amazon عبر RapidAPI /search endpoint (fallback قديم)"""
     headers = {
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": _RAPIDAPI_HOST,
@@ -129,13 +177,14 @@ async def _rapidapi_search(keyword: str, country: str, api_key: str) -> list[dic
     return results
 
 
-async def _rapidapi_bestsellers(category_keyword: str, country: str, api_key: str) -> list[dict]:
-    """جلب الأكثر مبيعاً كـ fallback"""
+async def _rapidapi_bestsellers(category_id: str, country: str, api_key: str) -> list[dict]:
+    """جلب الأكثر مبيعاً للتصنيف عبر RapidAPI (fallback قديم)"""
     headers = {
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": _RAPIDAPI_HOST,
     }
-    params = {"country": country, "category": "aps", "page": "1"}
+    category_slug = _BESTSELLER_SLUG_MAP.get(category_id, "aps")
+    params = {"country": country, "category": category_slug, "page": "1"}
     try:
         timeout = aiohttp.ClientTimeout(total=25)
         async with aiohttp.ClientSession() as session:
@@ -325,13 +374,32 @@ async def discover_deals(category_ids: list[str]) -> dict:
     """
     from backend.config import get_api_key, get_setting
 
-    api_key = get_api_key("rapidapi_key")
-    if not api_key:
-        raise ValueError("مفتاح RapidAPI غير موجود — أضفه من صفحة مفاتيح API")
-
     marketplace = get_setting("amazon_marketplace", "SA")
+    data_source = get_setting("amazon_data_source", "scraper")
+    api_key = get_api_key("rapidapi_key") if data_source != "scraper" else None
+    seen_asins = seen_asins or {}
 
     results = {}
+
+    async def _search_kw(kw: str) -> list[dict]:
+        if data_source == "rapidapi" and api_key:
+            return await _rapidapi_search(kw, marketplace, api_key)
+        if data_source == "auto" and api_key:
+            r = await _scraper_search(kw, marketplace)
+            if not r:
+                r = await _rapidapi_search(kw, marketplace, api_key)
+            return r
+        return await _scraper_search(kw, marketplace)
+
+    async def _fallback_bestsellers(cat_id: str) -> list[dict]:
+        if data_source == "rapidapi" and api_key:
+            return await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+        if data_source == "auto" and api_key:
+            r = await _scraper_bestsellers(cat_id, marketplace)
+            if not r:
+                r = await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+            return r
+        return await _scraper_bestsellers(cat_id, marketplace)
 
     async def process_category(cat_id: str):
         category = _get_category(cat_id)
@@ -342,11 +410,7 @@ async def discover_deals(category_ids: list[str]) -> dict:
         logger.info(f"جاري البحث في تصنيف: {category['name_ar']}")
         all_products = []
 
-        # نبحث بكل keyword مع تشغيل متوازي
-        tasks = [
-            _rapidapi_search(kw, marketplace, api_key)
-            for kw in category["keywords"]
-        ]
+        tasks = [_search_kw(kw) for kw in category["keywords"]]
         search_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in search_results:
@@ -356,13 +420,27 @@ async def discover_deals(category_ids: list[str]) -> dict:
         # fallback للأكثر مبيعاً إذا كانت النتائج قليلة
         if len(all_products) < 5:
             logger.info(f"نتائج قليلة لـ '{category['name_ar']}' — جرّب bestsellers كـ fallback")
-            bestsellers = await _rapidapi_bestsellers(cat_id, marketplace, api_key)
+            bestsellers = await _fallback_bestsellers(cat_id)
             all_products.extend(bestsellers)
 
         if not all_products:
             logger.warning(f"لا توجد منتجات لتصنيف '{category['name_ar']}'")
             results[cat_id] = []
             return
+
+        # استبعاد المنتجات التي سبق عرضها
+        excluded = set(seen_asins.get(cat_id, []))
+        if excluded:
+            before = len(all_products)
+            all_products = [p for p in all_products if p["asin"] not in excluded]
+            logger.info(f"استبعدنا {before - len(all_products)} منتج سبق عرضه في '{category['name_ar']}'")
+
+        if not all_products:
+            logger.info(f"استُنفذت المنتجات الجديدة في '{category['name_ar']}' — نعيد كل المنتجات")
+            tasks2 = [_search_kw(kw) for kw in category["keywords"]]
+            r2 = await asyncio.gather(*tasks2, return_exceptions=True)
+            all_products = [p for res in r2 if isinstance(res, list) for p in res]
+
 
         # ترتيب وإزالة التكرار
         unique_sorted = _sort_and_deduplicate(all_products)

@@ -86,6 +86,15 @@ class TrendKeyword(Base):
     last_used = Column(DateTime, nullable=True)
 
 
+class ScraperCache(Base):
+    """كاش السكرابر — نتائج البحث والمنتجات المجلوبة من HTML"""
+    __tablename__ = "scraper_cache"
+
+    cache_key = Column(String(255), primary_key=True)   # "asin:B0XXX:SA" | "search:coffee:SA"
+    payload = Column(Text, nullable=False)               # JSON
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
+
 class User(Base):
     """مستخدمو لوحة التحكم"""
     __tablename__ = "users"

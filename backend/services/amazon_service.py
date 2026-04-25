@@ -72,7 +72,7 @@ async def search_product(query: str) -> Optional[dict]:
     marketplace = get_setting("amazon_marketplace", "SA")
 
     if not all([access_key, secret_key, associate_tag]):
-        logger.info("مفاتيح Amazon PA API غير مكتملة — جاري المحاولة عبر RapidAPI")
+        logger.info("مفاتيح Amazon PA API غير مكتملة — جاري المحاولة عبر السكرابر/RapidAPI")
         from backend.services.rapidapi_amazon import search_via_rapidapi
         return await search_via_rapidapi(query)
 
@@ -82,12 +82,11 @@ async def search_product(query: str) -> Optional[dict]:
         )
         if result:
             return result
-        # PA API لم تُرجع نتيجة — جرّب RapidAPI
-        logger.info("PA API لم تُرجع نتيجة — جاري المحاولة عبر RapidAPI")
+        logger.info("PA API لم تُرجع نتيجة — جاري المحاولة عبر السكرابر/RapidAPI")
         from backend.services.rapidapi_amazon import search_via_rapidapi
         return await search_via_rapidapi(query)
     except Exception as exc:
-        logger.error(f"خطأ في Amazon PA API: {exc} — جاري المحاولة عبر RapidAPI")
+        logger.error(f"خطأ في Amazon PA API: {exc} — جاري المحاولة عبر السكرابر/RapidAPI")
         from backend.services.rapidapi_amazon import search_via_rapidapi
         return await search_via_rapidapi(query)
 
