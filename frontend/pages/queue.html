@@ -8,9 +8,12 @@
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="loadQueue()">🔄 تحديث</button>
     <button class="btn btn-primary" onclick="openManualLinkModal()">➕ إضافة رابط يدوي</button>
-    <button class="btn btn-success" onclick="approveAll()" id="btn-approve-all">✓ موافقة على الكل</button>
+    <button class="btn btn-success" onclick="approveAll()" id="btn-approve-all">✓ قبول الكل للجدولة</button>
   </div>
 </div>
+
+<!-- شريط معلومات الجدولة -->
+<div id="schedule-info-bar" style="display:none;background:rgba(0,113,227,0.07);border:1px solid rgba(0,113,227,0.18);border-radius:var(--radius-sm);padding:10px 18px;margin-bottom:16px;font-size:13px;color:var(--text-secondary);text-align:center;"></div>
 
 <!-- ── مودال إضافة رابط يدوي ──────────────────────────────────────────────── -->
 <div id="manual-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;">
@@ -177,6 +180,45 @@
 }
 .model-tag { margin-right: auto; font-size: 11px; color: var(--text-tertiary); }
 
+.deal-of-day-card {
+  border-color: #f5a623;
+  box-shadow: 0 0 0 2px rgba(245,166,35,0.2), var(--shadow-sm);
+}
+.deal-of-day-badge {
+  background: linear-gradient(135deg, #f5a623, #e8820c);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.btn-accent {
+  background: rgba(0,113,227,0.1);
+  color: var(--accent);
+  border: 1px solid rgba(0,113,227,0.25);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-accent:hover { background: rgba(0,113,227,0.18); }
+.btn-accent:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-warning {
+  background: rgba(245,166,35,0.1);
+  color: #c47d00;
+  border: 1px solid rgba(245,166,35,0.35);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-warning:hover { background: rgba(245,166,35,0.2); }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes modal-in {
   from { opacity: 0; transform: scale(0.95) translateY(8px); }
@@ -192,7 +234,10 @@ async function loadQueue() {
   list.innerHTML = '<div style="text-align:center;padding:64px 0;"><div class="skeleton" style="height:120px;margin-bottom:16px;"></div><div class="skeleton" style="height:120px;"></div></div>';
 
   try {
-    queueData = await fetch('/api/queue').then(r => r.json());
+    [queueData] = await Promise.all([
+      fetch('/api/queue').then(r => r.json()),
+      loadScheduleInfo(),
+    ]);
     renderQueue();
     const count = queueData.length;
     document.getElementById('queue-count').textContent = count > 0
@@ -203,6 +248,24 @@ async function loadQueue() {
   } catch (e) {
     list.innerHTML = '<div style="text-align:center;padding:64px;color:var(--danger);">خطأ في تحميل القائمة</div>';
   }
+}
+
+async function loadScheduleInfo() {
+  try {
+    const info = await fetch('/api/queue/schedule-info').then(r => r.json());
+    const bar = document.getElementById('schedule-info-bar');
+    if (bar) {
+      const parts = [];
+      if (info.approved_count > 0)
+        parts.push(`<strong>${info.approved_count}</strong> معتمد جاهز للنشر`);
+      if (info.pending_count > 0)
+        parts.push(`<strong>${info.pending_count}</strong> بانتظار الموافقة`);
+      if (info.next_publish_at)
+        parts.push(`⏰ الموعد القادم: <strong>${info.next_publish_at}</strong>`);
+      bar.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+      bar.style.display = parts.length ? 'block' : 'none';
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function renderQueue() {
@@ -218,13 +281,16 @@ function renderQueue() {
   }
 
   list.innerHTML = queueData.map(p => `
-    <div class="product-card" id="product-${p.id}">
+    <div class="product-card${p.is_deal_of_day ? ' deal-of-day-card' : ''}" id="product-${p.id}">
       <div class="product-card-header">
         ${p.image_url
           ? `<img class="product-thumb" src="${p.image_url}" alt="صورة المنتج" onerror="this.outerHTML='<div class=product-thumb-placeholder>📦</div>'">`
           : '<div class="product-thumb-placeholder">📦</div>'}
         <div class="product-info">
-          <div class="product-title">${p.title_ar || p.title}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="product-title">${p.title_ar || p.title}</div>
+            ${p.is_deal_of_day ? '<span class="deal-of-day-badge">⭐ عرض اليوم</span>' : ''}
+          </div>
           ${p.title_ar && p.title !== p.title_ar ? `<div class="text-sm text-secondary">${p.title}</div>` : ''}
           <div class="product-meta">
             <span class="meta-item">📍 ${sourceBadge(p.source)}</span>
@@ -247,8 +313,13 @@ function renderQueue() {
       </div>
 
       <div class="product-actions">
-        <button class="btn btn-success" onclick="approveProduct(${p.id})">✓ موافقة ونشر</button>
+        <button class="btn btn-success" onclick="approveProduct(${p.id})">✓ قبول للجدولة</button>
+        <button class="btn btn-accent" onclick="publishNow(${p.id})" title="نشر فوري بدون انتظار الجدولة">📤 نشر الآن</button>
         <button class="btn btn-secondary" onclick="editProduct(${p.id})">✎ تعديل</button>
+        ${p.is_deal_of_day
+          ? `<button class="btn btn-warning btn-sm" onclick="unsetDealOfDay(${p.id})" title="إلغاء عرض اليوم">⭐ إلغاء عرض اليوم</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="setDealOfDay(${p.id})" title="تعيين كعرض اليوم">⭐ عرض اليوم</button>`
+        }
         <button class="btn btn-danger" onclick="rejectProduct(${p.id})">✕ رفض</button>
         <span class="model-tag">🤖 ${p.ai_model_used || 'غير محدد'}</span>
       </div>
@@ -256,10 +327,10 @@ function renderQueue() {
   `).join('');
 }
 
-// ── الموافقة على منتج ────────────────────────────────────────────────────────
+// ── الموافقة على منتج (للجدولة) ─────────────────────────────────────────────
 async function approveProduct(id) {
   const btn = document.querySelector(`#product-${id} .btn-success`);
-  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري القبول...'; }
 
   try {
     const resp = await fetch(`/api/queue/${id}/approve`, { method: 'POST' });
@@ -270,14 +341,72 @@ async function approveProduct(id) {
       queueData = queueData.filter(p => p.id !== id);
       if (!queueData.length) renderQueue();
       updateQueueBadge(queueData.length);
-      showToast('✓ تم نشر المنتج بنجاح', 'success');
+      showToast('✓ تمت الموافقة — سيُنشر في الموعد المجدول', 'success');
+      loadScheduleInfo();
     } else {
-      showToast('خطأ في النشر', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+      showToast('خطأ في الموافقة', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '✓ قبول للجدولة'; }
     }
   } catch (e) {
     showToast('خطأ: ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+    if (btn) { btn.disabled = false; btn.textContent = '✓ قبول للجدولة'; }
+  }
+}
+
+// ── نشر فوري (استثنائي) ──────────────────────────────────────────────────────
+async function publishNow(id) {
+  const btn = document.querySelector(`#product-${id} .btn-accent`);
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+
+  try {
+    const resp = await fetch(`/api/queue/${id}/publish-now`, { method: 'POST' });
+    const data = await resp.json();
+
+    if (data.success) {
+      document.getElementById(`product-${id}`)?.remove();
+      queueData = queueData.filter(p => p.id !== id);
+      if (!queueData.length) renderQueue();
+      updateQueueBadge(queueData.length);
+      showToast('🚀 تم النشر الفوري بنجاح', 'success');
+      loadScheduleInfo();
+    } else {
+      showToast('خطأ في النشر: ' + (data.error || ''), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '📤 نشر الآن'; }
+    }
+  } catch (e) {
+    showToast('خطأ: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '📤 نشر الآن'; }
+  }
+}
+
+// ── عرض اليوم ────────────────────────────────────────────────────────────────
+async function setDealOfDay(id) {
+  try {
+    const resp = await fetch(`/api/products/${id}/deal-of-day`, { method: 'POST' });
+    const data = await resp.json();
+    if (data.success) {
+      showToast('⭐ تم تعيينه كعرض اليوم', 'success');
+      await loadQueue();
+    } else {
+      showToast('خطأ: ' + (data.error || ''), 'error');
+    }
+  } catch (e) {
+    showToast('خطأ: ' + e.message, 'error');
+  }
+}
+
+async function unsetDealOfDay(id) {
+  try {
+    const resp = await fetch(`/api/products/${id}/deal-of-day`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.success) {
+      showToast('تم إلغاء تعيين عرض اليوم', 'info');
+      await loadQueue();
+    } else {
+      showToast('خطأ: ' + (data.error || ''), 'error');
+    }
+  } catch (e) {
+    showToast('خطأ: ' + e.message, 'error');
   }
 }
 
@@ -329,19 +458,19 @@ function editProduct(id) {
   });
 }
 
-// ── موافقة على الكل ────────────────────────────────────────────────────────
+// ── قبول الكل للجدولة ────────────────────────────────────────────────────────
 async function approveAll() {
   if (!queueData.length) return;
   showConfirmModal({
-    title: 'موافقة على الكل',
-    message: `هل تريد الموافقة على ونشر ${queueData.length} منتج دفعةً واحدة؟`,
-    confirmText: 'موافقة على الكل',
+    title: 'قبول الكل للجدولة',
+    message: `هل تريد قبول ${queueData.length} منتج وإضافتهم لقائمة النشر المجدول؟`,
+    confirmText: 'قبول الكل للجدولة',
     confirmClass: 'btn-success',
     onConfirm: async () => {
-      showToast('جاري النشر...', 'info');
+      showToast('جاري القبول...', 'info');
       const resp = await fetch('/api/queue/approve-all', { method: 'POST' });
       const data = await resp.json();
-      showToast(`✓ تم نشر ${data.published} منتج`, 'success');
+      showToast(`✓ تم قبول ${data.approved} منتج — سيُنشرون وفق الجدولة`, 'success');
       await loadQueue();
     },
   });
@@ -473,7 +602,8 @@ function showResultModal(product, autoPublished) {
   } else {
     titleEl.textContent = '✅ تم توليد المحتوى';
     actionEl.innerHTML = `
-      <button class="btn btn-success" onclick="approveFromResult(${product.id})">✓ موافقة ونشر</button>`;
+      <button class="btn btn-success" onclick="approveFromResult(${product.id})">✓ قبول للجدولة</button>
+      <button class="btn btn-accent" onclick="publishNowFromResult(${product.id})" style="margin-right:6px;">📤 نشر الآن</button>`;
   }
 
   document.getElementById('result-modal-overlay').style.display = 'flex';
@@ -497,9 +627,8 @@ async function copyResultContent() {
 
 async function approveFromResult(productId) {
   const btn = document.querySelector('#result-action-area .btn-success');
-  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري القبول...'; }
 
-  // حفظ أي تعديل على المحتوى
   const editedContent = document.getElementById('result-content').value;
   await fetch(`/api/queue/${productId}/edit`, {
     method: 'PUT',
@@ -512,11 +641,35 @@ async function approveFromResult(productId) {
 
   if (data.success) {
     closeResultModal();
-    showToast('✓ تم نشر المنتج بنجاح', 'success');
+    showToast('✓ تمت الموافقة — سيُنشر في الموعد المجدول', 'success');
     await loadQueue();
   } else {
-    showToast('خطأ في النشر', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '✓ موافقة ونشر'; }
+    showToast('خطأ في الموافقة', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '✓ قبول للجدولة'; }
+  }
+}
+
+async function publishNowFromResult(productId) {
+  const btn = document.querySelector('#result-action-area .btn-accent');
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري النشر...'; }
+
+  const editedContent = document.getElementById('result-content').value;
+  await fetch(`/api/queue/${productId}/edit`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ai_content: editedContent }),
+  });
+
+  const resp = await fetch(`/api/queue/${productId}/publish-now`, { method: 'POST' });
+  const data = await resp.json();
+
+  if (data.success) {
+    closeResultModal();
+    showToast('🚀 تم النشر الفوري بنجاح', 'success');
+    await loadQueue();
+  } else {
+    showToast('خطأ في النشر: ' + (data.error || ''), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '📤 نشر الآن'; }
   }
 }
 

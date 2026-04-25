@@ -152,6 +152,47 @@ FALLBACK_TEMPLATE = """🛒 عرض مميز لا تفوّته!
 
 #تسوق_أونلاين #عروض_أمازون #خصومات"""
 
+DEAL_OF_DAY_SYSTEM = """أنت كاتب محتوى تسويقي محترف متخصص في منتجات أمازون للسوق السعودي.
+مهمتك: كتابة بوست استثنائي لـ "عرض اليوم" — العرض الأقوى والأبرز يومياً.
+هذا ليس منشوراً عادياً، بل العرض الأقوى الذي يجب أن ينتهز المتابع هذه الفرصة فوراً."""
+
+DEAL_OF_DAY_PROMPT = """اكتب بوست "عرض اليوم" لهذا المنتج الاستثنائي:
+
+الاسم: {title}
+السعر الأصلي: {price_original} ريال
+السعر الحالي: {price_current} ريال
+الخصم: {discount_pct}% (توفير {saving} ريال)
+التقييم: {rating}/5 ({rating_count} تقييم)
+
+المطلوب:
+- 🌟 ابدأ بـ "⭐ عرض اليوم فقط!" بشكل بارز ومميز
+- أبرز قيمة التوفير بالريال: "وفّر {saving} ريال اليوم!"
+- أضف إحساساً بالعجلة: "العرض محدود - لا تتأخر!"
+- اذكر 4 مميزات رئيسية قوية بأسلوب نقاط
+- اختم بـ CTA قوي وعاجل
+- الطول: 200-250 كلمة
+- اللهجة: متحمسة لكن مهنية
+
+الرابط في النهاية: {affiliate_url}"""
+
+DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
+
+🔥 {title}
+
+💥 سعر لن تجده مرة أخرى:
+💰 كان: {price_original} ريال
+✅ الآن: {price_current} ريال فقط!
+📉 خصم {discount_pct}% — توفير {saving} ريال!
+
+⏰ العرض محدود — لا تتأخر!
+
+⭐ التقييم: {rating}/5 من {rating_count} مشترٍ
+
+🛒 اطلبه الآن قبل نفاد الكمية:
+{affiliate_url}
+
+#عرض_اليوم #أفضل_عرض #أمازون_السعودية"""
+
 
 # ── دوال الاستدعاء لكل مزوّد ────────────────────────────────────────────────────
 async def _call_anthropic(model_id: str, user_prompt: str) -> str:
@@ -326,6 +367,64 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         affiliate_url=product.get("affiliate_url", ""),
     )
     return content, "fallback-template"
+
+
+async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tuple[str, str]:
+    """
+    يولّد محتوى خاص بـ "عرض اليوم" — أكثر إثارة وعجلة من البوست العادي.
+    """
+    saving = round((product.get("price_original", 0) or 0) - (product.get("price_current", 0) or 0))
+
+    user_prompt = DEAL_OF_DAY_PROMPT.format(
+        title=product.get("title", ""),
+        price_original=product.get("price_original", 0),
+        price_current=product.get("price_current", 0),
+        discount_pct=product.get("discount_pct", 0),
+        saving=saving,
+        rating=product.get("rating", 0),
+        rating_count=product.get("rating_count", 0),
+        affiliate_url=product.get("affiliate_url", ""),
+    )
+
+    models_to_try = _build_model_priority() if llm == "auto" else [llm]
+
+    if not models_to_try:
+        return _make_deal_of_day_fallback(product), "fallback-template"
+
+    last_error: Optional[Exception] = None
+    for model_id in models_to_try:
+        if model_id not in SUPPORTED_MODELS:
+            continue
+        provider = SUPPORTED_MODELS[model_id]["provider"]
+        caller = _PROVIDER_CALLERS.get(provider)
+        if not caller:
+            continue
+        try:
+            logger.info(f"توليد محتوى عرض اليوم بـ {model_id}")
+            content = await caller(model_id, user_prompt, system=DEAL_OF_DAY_SYSTEM)
+            if content and len(content.strip()) > 30:
+                return content, model_id
+            last_error = RuntimeError(f"{model_id}: محتوى قصير")
+        except Exception as exc:
+            last_error = exc
+            logger.warning(f"فشل {model_id} (عرض اليوم): {exc}")
+
+    logger.error(f"فشلت كل النماذج لعرض اليوم — آخر خطأ: {last_error}")
+    return _make_deal_of_day_fallback(product), "fallback-template"
+
+
+def _make_deal_of_day_fallback(product: dict) -> str:
+    saving = round((product.get("price_original", 0) or 0) - (product.get("price_current", 0) or 0))
+    return DEAL_OF_DAY_FALLBACK.format(
+        title=product.get("title", "منتج مميز"),
+        price_original=product.get("price_original", 0),
+        price_current=product.get("price_current", 0),
+        discount_pct=product.get("discount_pct", 0),
+        saving=saving,
+        rating=product.get("rating", 0),
+        rating_count=product.get("rating_count", 0),
+        affiliate_url=product.get("affiliate_url", ""),
+    )
 
 
 # ── اختبار نموذج معيّن ─────────────────────────────────────────────────────────

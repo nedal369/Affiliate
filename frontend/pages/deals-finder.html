@@ -213,6 +213,88 @@
   .bottom-bar .selection-info { font-size: 13px; color: var(--text-secondary); }
   .bottom-bar .selection-count { font-weight: 700; color: var(--text-primary); }
 
+  /* تاريخ الاكتشافات */
+  .history-batch {
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .history-batch-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--surface);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-batch-header:hover { background: rgba(0,0,0,0.03); }
+  .history-batch-toggle { font-size: 11px; color: var(--text-tertiary); margin-right: auto; }
+  .history-batch-body { padding: 16px; }
+  .deals-grid-small {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .deal-card-small {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .deal-card-small:hover { border-color: var(--accent); }
+  .deal-card-small.selected { border-color: var(--success); box-shadow: 0 0 0 2px rgba(52,199,89,0.15); }
+  .deal-card-small .select-overlay {
+    position: absolute; top: 5px; right: 5px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: white; border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; z-index: 2; box-shadow: var(--shadow-sm);
+  }
+  .deal-card-small.selected .select-overlay { background: var(--success); border-color: var(--success); color: white; }
+  .deal-card-small .deal-image-small {
+    width: 100%; height: 100px; object-fit: contain;
+    background: var(--surface); padding: 4px;
+  }
+  .deal-card-small .deal-body-small { padding: 8px; }
+  .deal-card-small .deal-title-small {
+    font-size: 11px; font-weight: 600; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; margin-bottom: 4px; height: 29px;
+  }
+  .deal-card-small .price-current-small { font-size: 12px; font-weight: 700; }
+  .deal-card-small .discount-badge-small {
+    font-size: 10px; font-weight: 700;
+    background: rgba(255,59,48,0.1); color: var(--danger);
+    padding: 1px 5px; border-radius: 10px; margin-right: 4px;
+  }
+
+  .auto-discover-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, #34c759, #28a046);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .auto-discover-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .auto-discover-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
   /* Content Modal */
   .content-review-modal { max-width: 700px; }
   .content-item {
@@ -288,6 +370,9 @@
     <button class="discover-btn" id="discover-btn" onclick="startDiscovery()" disabled>
       <span>🤖</span> <span id="discover-btn-text">اكتشف أفضل العروض</span>
     </button>
+    <button class="auto-discover-btn" id="auto-discover-btn" onclick="autoDiscoverAndQueue()">
+      <span>⚡</span> اكتشاف تلقائي وإضافة للانتظار
+    </button>
     <div id="progress-section" class="hidden">
       <div class="progress-bar-wrap">
         <div class="progress-bar" id="progress-bar"></div>
@@ -298,7 +383,13 @@
 </div>
 
 <!-- نتائج البحث -->
-<div id="results-section" class="results-section hidden"></div>
+<div id="results-section" class="results-section hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <span id="results-summary" style="font-size:13px;color:var(--text-secondary);"></span>
+    <button class="btn btn-secondary btn-sm" onclick="clearHistory()" style="font-size:12px;">🗑 مسح التاريخ</button>
+  </div>
+  <div id="results-content"></div>
+</div>
 
 <!-- الشريط السفلي -->
 <div class="bottom-bar hidden" id="bottom-bar">
@@ -323,7 +414,7 @@
     <div class="modal-body" id="content-modal-body" style="max-height:60vh;overflow-y:auto;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeContentModal()">إغلاق</button>
-      <button class="btn btn-success" id="btn-publish" onclick="publishDeals()">
+      <button class="btn btn-success" id="btn-publish" onclick="addToQueue()">
         📤 نشر المحتوى المحدد
       </button>
     </div>
@@ -334,9 +425,11 @@
 (function() {
   let allCategories = [];
   let selectedCategories = new Set();
-  let discoveredDeals = {};   // { category_id: [deals] }
+  let discoveryHistory = [];   // [{id, timestamp, label, results: {catId: [deals]}}]
+  let allDiscoveredDeals = {}; // {catId: [deals]} — مدمج من كل الدفعات للبحث
   let selectedDeals = new Set();  // Set of deal keys "cat_id:asin"
   let generatedContent = [];  // [{asin, content, model_used, deal}]
+  let seenAsins = {};          // { category_id: Set<asin> }
 
   // ── تحميل التصنيفات ─────────────────────────────────────────────────────────
   async function loadCategories() {
@@ -364,11 +457,8 @@
   }
 
   window.toggleCategory = function(id) {
-    if (selectedCategories.has(id)) {
-      selectedCategories.delete(id);
-    } else {
-      selectedCategories.add(id);
-    }
+    if (selectedCategories.has(id)) selectedCategories.delete(id);
+    else selectedCategories.add(id);
     renderCategories();
   };
 
@@ -383,8 +473,7 @@
   };
 
   function updateDiscoverBtn() {
-    const btn = document.getElementById('discover-btn');
-    btn.disabled = selectedCategories.size === 0;
+    document.getElementById('discover-btn').disabled = selectedCategories.size === 0;
   }
 
   // ── اكتشاف العروض ────────────────────────────────────────────────────────────
@@ -396,18 +485,11 @@
     const progressSection = document.getElementById('progress-section');
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
-    const resultsSection = document.getElementById('results-section');
 
     btn.disabled = true;
     btnText.textContent = 'جاري الاكتشاف...';
     progressSection.classList.remove('hidden');
-    resultsSection.classList.add('hidden');
-    resultsSection.innerHTML = '';
-    discoveredDeals = {};
-    selectedDeals.clear();
-    document.getElementById('bottom-bar').classList.add('hidden');
 
-    // محاكاة شريط التقدم
     let progress = 5;
     progressBar.style.width = progress + '%';
     progressText.textContent = `🤖 الذكاء الاصطناعي يبحث في ${selectedCategories.size} تصنيف...`;
@@ -419,11 +501,20 @@
       }
     }, 1200);
 
+    const seenAsinsPayload = {};
+    for (const catId of selectedCategories) {
+      if (seenAsins[catId] && seenAsins[catId].size > 0)
+        seenAsinsPayload[catId] = [...seenAsins[catId]];
+    }
+
     try {
       const resp = await fetch('/api/deals/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category_ids: [...selectedCategories] }),
+        body: JSON.stringify({
+          category_ids: [...selectedCategories],
+          seen_asins: Object.keys(seenAsinsPayload).length > 0 ? seenAsinsPayload : null,
+        }),
       });
 
       clearInterval(progressInterval);
@@ -435,8 +526,30 @@
       }
 
       const data = await resp.json();
-      discoveredDeals = data.results || {};
+      const newResults = data.results || {};
       progressText.textContent = '✅ اكتمل البحث!';
+
+      // تسجيل ASINs الجديدة
+      for (const [catId, deals] of Object.entries(newResults)) {
+        if (!seenAsins[catId]) seenAsins[catId] = new Set();
+        (deals || []).forEach(d => seenAsins[catId].add(d.asin));
+        if (!allDiscoveredDeals[catId]) allDiscoveredDeals[catId] = [];
+        allDiscoveredDeals[catId] = [...(allDiscoveredDeals[catId] || []), ...(deals || [])];
+      }
+
+      // إضافة للتاريخ
+      const catMap = {};
+      allCategories.forEach(c => { catMap[c.id] = c; });
+      const catNames = [...selectedCategories]
+        .map(id => catMap[id]?.name_ar || id)
+        .join('، ');
+      discoveryHistory.unshift({
+        id: Date.now(),
+        timestamp: new Date(),
+        label: catNames,
+        results: newResults,
+      });
+
       renderResults();
     } catch (err) {
       clearInterval(progressInterval);
@@ -449,56 +562,129 @@
     }
   };
 
-  // ── عرض النتائج ──────────────────────────────────────────────────────────────
+  // ── مسح التاريخ ──────────────────────────────────────────────────────────────
+  window.clearHistory = function() {
+    discoveryHistory = [];
+    allDiscoveredDeals = {};
+    seenAsins = {};
+    selectedDeals.clear();
+    document.getElementById('results-section').classList.add('hidden');
+    document.getElementById('bottom-bar').classList.add('hidden');
+    document.getElementById('bottom-bar-spacer').classList.add('hidden');
+    showToast('تم مسح تاريخ الاكتشاف', 'info');
+  };
+
+  // ── عرض النتائج (مكدّسة) ────────────────────────────────────────────────────
   function renderResults() {
     const section = document.getElementById('results-section');
+    const content = document.getElementById('results-content');
     section.classList.remove('hidden');
 
     const catMap = {};
     allCategories.forEach(c => { catMap[c.id] = c; });
 
+    let totalAll = discoveryHistory.reduce((sum, batch) =>
+      sum + Object.values(batch.results).reduce((s, d) => s + (d?.length || 0), 0), 0);
+    document.getElementById('results-summary').textContent =
+      `${discoveryHistory.length} دفعة اكتشاف — ${totalAll} عرض إجمالاً`;
+
     let html = '';
-    let totalDeals = 0;
 
-    for (const [catId, deals] of Object.entries(discoveredDeals)) {
-      if (!deals || deals.length === 0) continue;
-      const cat = catMap[catId] || { name_ar: catId, icon: '📦' };
-      totalDeals += deals.length;
+    discoveryHistory.forEach((batch, batchIdx) => {
+      const isLatest = batchIdx === 0;
+      const timeStr = _formatRelativeTime(batch.timestamp);
+      let batchTotal = Object.values(batch.results).reduce((s, d) => s + (d?.length || 0), 0);
 
-      html += `
-        <div class="category-section">
-          <div class="category-heading">
-            <span style="font-size:22px;">${cat.icon}</span>
-            <h3>${cat.name_ar}</h3>
-            <span class="category-count">${deals.length} منتج</span>
-          </div>
-          <div class="deals-grid">
-            ${deals.map(deal => renderDealCard(catId, deal)).join('')}
-          </div>
-        </div>
-      `;
+      if (isLatest) {
+        // أحدث دفعة — عرض كبير
+        html += `<div class="category-section" style="margin-bottom:0;">`;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--border);">
+          <span style="font-size:13px;font-weight:700;color:var(--accent);">🆕 أحدث اكتشاف</span>
+          <span style="font-size:11px;color:var(--text-tertiary);">${timeStr}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);margin-right:auto;">${batch.label}</span>
+        </div>`;
+        for (const [catId, deals] of Object.entries(batch.results)) {
+          if (!deals || deals.length === 0) continue;
+          const cat = catMap[catId] || { name_ar: catId, icon: '📦' };
+          html += `
+            <div style="margin-bottom:24px;">
+              <div class="category-heading">
+                <span style="font-size:22px;">${cat.icon}</span>
+                <h3>${cat.name_ar}</h3>
+                <span class="category-count">${deals.length} منتج</span>
+              </div>
+              <div class="deals-grid">
+                ${deals.map(deal => renderDealCard(catId, deal, false)).join('')}
+              </div>
+            </div>`;
+        }
+        if (batchTotal === 0) {
+          html += `<p style="text-align:center;color:var(--text-tertiary);padding:24px 0;">لم يُعثر على عروض جديدة في هذه الدفعة</p>`;
+        }
+        html += `</div>`;
+      } else {
+        // دفعة قديمة — مضغوطة قابلة للتوسيع
+        html += `
+          <details class="history-batch" style="margin-top:16px;">
+            <summary class="history-batch-header" style="list-style:none;display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);cursor:pointer;">
+              <span style="font-size:13px;">📋 اكتشاف سابق</span>
+              <span style="font-size:11px;color:var(--text-tertiary);">${timeStr}</span>
+              <span style="font-size:11px;color:var(--text-secondary);">${batch.label}</span>
+              <span class="history-batch-toggle">${batchTotal} عرض ▸</span>
+            </summary>
+            <div class="history-batch-body">`;
+        for (const [catId, deals] of Object.entries(batch.results)) {
+          if (!deals || deals.length === 0) continue;
+          const cat = catMap[catId] || { name_ar: catId, icon: '📦' };
+          html += `
+              <div style="margin-bottom:16px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">${cat.icon} ${cat.name_ar}</div>
+                <div class="deals-grid-small">
+                  ${deals.map(deal => renderDealCard(catId, deal, true)).join('')}
+                </div>
+              </div>`;
+        }
+        html += `</div></details>`;
+      }
+    });
+
+    if (discoveryHistory.length === 0) {
+      html = `<div class="card"><div class="card-body" style="text-align:center;padding:48px;">
+        <div style="font-size:48px;margin-bottom:16px;">🔍</div>
+        <p class="text-secondary">لا توجد نتائج بعد. اختر تصنيفات وابدأ الاكتشاف.</p>
+      </div></div>`;
     }
 
-    if (totalDeals === 0) {
-      html = `
-        <div class="card">
-          <div class="card-body" style="text-align:center;padding:48px;">
-            <div style="font-size:48px;margin-bottom:16px;">🔍</div>
-            <p class="text-secondary">لم يتم العثور على عروض مناسبة في التصنيفات المحددة.<br>
-            تأكد من وجود مفتاح RapidAPI في الإعدادات وحاول مجدداً.</p>
-          </div>
-        </div>
-      `;
-    }
-
-    section.innerHTML = html;
+    content.innerHTML = html;
     document.getElementById('bottom-bar').classList.remove('hidden');
     updateSelectionBar();
   }
 
-  function renderDealCard(catId, deal) {
+  function renderDealCard(catId, deal, small = false) {
     const key = `${catId}:${deal.asin}`;
     const isSelected = selectedDeals.has(key);
+
+    if (small) {
+      const discountHtml = deal.discount_pct > 0
+        ? `<span class="discount-badge-small">-${deal.discount_pct}%</span>` : '';
+      const priceHtml = deal.price_current > 0
+        ? `${discountHtml}<span class="price-current-small">${deal.price_current.toFixed(0)} ر.س</span>`
+        : `<span class="price-current-small" style="color:var(--text-tertiary);">—</span>`;
+      const imgHtml = deal.image_url
+        ? `<img src="${deal.image_url}" class="deal-image-small" alt="" onerror="this.style.display='none'">`
+        : `<div class="deal-image-small" style="display:flex;align-items:center;justify-content:center;font-size:24px;">📦</div>`;
+      return `
+        <div class="deal-card-small ${isSelected ? 'selected' : ''}"
+             onclick="toggleDeal('${catId}', '${deal.asin}')" data-key="${key}">
+          <div class="select-overlay">${isSelected ? '✓' : ''}</div>
+          ${imgHtml}
+          <div class="deal-body-small">
+            <div class="deal-title-small">${deal.title}</div>
+            <div>${priceHtml}</div>
+          </div>
+        </div>`;
+    }
+
     const imageHtml = deal.image_url
       ? `<img src="${deal.image_url}" class="deal-image" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
          <div class="deal-image-placeholder" style="display:none;">📦</div>`
@@ -507,23 +693,19 @@
     const priceHtml = deal.price_current > 0
       ? `<span class="price-current">${deal.price_current.toFixed(0)} ر.س</span>
          ${deal.price_original > deal.price_current
-           ? `<span class="price-original">${deal.price_original.toFixed(0)}</span>`
-           : ''}
+           ? `<span class="price-original">${deal.price_original.toFixed(0)}</span>` : ''}
          ${deal.discount_pct > 0
-           ? `<span class="discount-badge">-${deal.discount_pct}%</span>`
-           : ''}`
+           ? `<span class="discount-badge">-${deal.discount_pct}%</span>` : ''}`
       : `<span class="price-current text-secondary">السعر غير متاح</span>`;
 
     const ratingHtml = deal.rating > 0
       ? `<div class="deal-rating"><span>⭐</span> ${deal.rating.toFixed(1)}
          ${deal.rating_count > 0 ? `<span style="color:var(--text-tertiary);">(${deal.rating_count.toLocaleString()})</span>` : ''}
-         </div>`
-      : '';
+         </div>` : '';
 
     return `
       <div class="deal-card ${isSelected ? 'selected' : ''}"
-           onclick="toggleDeal('${catId}', '${deal.asin}')"
-           data-key="${key}">
+           onclick="toggleDeal('${catId}', '${deal.asin}')" data-key="${key}">
         <div class="select-overlay">${isSelected ? '✓' : ''}</div>
         ${imageHtml}
         <div class="deal-body">
@@ -531,23 +713,18 @@
           <div class="deal-prices">${priceHtml}</div>
           ${ratingHtml}
         </div>
-      </div>
-    `;
+      </div>`;
   }
 
   window.toggleDeal = function(catId, asin) {
     const key = `${catId}:${asin}`;
-    if (selectedDeals.has(key)) {
-      selectedDeals.delete(key);
-    } else {
-      selectedDeals.add(key);
-    }
-    // تحديث بطاقة واحدة فقط بدون إعادة رسم كامل
+    if (selectedDeals.has(key)) selectedDeals.delete(key);
+    else selectedDeals.add(key);
     const card = document.querySelector(`[data-key="${key}"]`);
     if (card) {
-      const isNowSelected = selectedDeals.has(key);
-      card.classList.toggle('selected', isNowSelected);
-      card.querySelector('.select-overlay').textContent = isNowSelected ? '✓' : '';
+      const isNow = selectedDeals.has(key);
+      card.classList.toggle('selected', isNow);
+      card.querySelector('.select-overlay').textContent = isNow ? '✓' : '';
     }
     updateSelectionBar();
   };
@@ -560,11 +737,33 @@
 
   window.clearSelection = function() {
     selectedDeals.clear();
-    document.querySelectorAll('.deal-card.selected').forEach(card => {
+    document.querySelectorAll('.deal-card.selected, .deal-card-small.selected').forEach(card => {
       card.classList.remove('selected');
       card.querySelector('.select-overlay').textContent = '';
     });
     updateSelectionBar();
+  };
+
+  // ── اكتشاف تلقائي وإضافة للانتظار ──────────────────────────────────────────
+  window.autoDiscoverAndQueue = async function() {
+    const btn = document.getElementById('auto-discover-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-left:6px;"></span> جاري الاكتشاف...';
+
+    try {
+      const resp = await fetch('/api/deals/auto-discover-and-queue', { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'خطأ في الاكتشاف');
+
+      const msg = `✅ تمت إضافة ${data.added} منتج لقائمة الانتظار` +
+        (data.skipped > 0 ? ` (${data.skipped} منتج مكرر تم تخطيه)` : '');
+      showToast(msg, 'success');
+    } catch (err) {
+      showToast('خطأ: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>⚡</span> اكتشاف تلقائي وإضافة للانتظار';
+    }
   };
 
   // ── توليد المحتوى ─────────────────────────────────────────────────────────────
@@ -575,11 +774,10 @@
     btn.disabled = true;
     btn.textContent = '⏳ جاري الإنشاء...';
 
-    // جمع بيانات المنتجات المحددة
     const dealsToProcess = [];
     for (const key of selectedDeals) {
       const [catId, asin] = key.split(':');
-      const catDeals = discoveredDeals[catId] || [];
+      const catDeals = allDiscoveredDeals[catId] || [];
       const deal = catDeals.find(d => d.asin === asin);
       if (deal) dealsToProcess.push(deal);
     }
@@ -593,12 +791,7 @@
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'خطأ في التوليد');
 
-      // دمج المحتوى مع بيانات المنتجات
-      generatedContent = data.results.map((r, i) => ({
-        ...r,
-        deal: dealsToProcess[i],
-      }));
-
+      generatedContent = data.results.map((r, i) => ({ ...r, deal: dealsToProcess[i] }));
       openContentModal();
     } catch (err) {
       showToast(err.message, 'error');
@@ -632,10 +825,8 @@
             : `<textarea class="content-textarea" id="content-${idx}" rows="6">${item.content}</textarea>
                <div class="model-tag">🤖 ${item.model_used || 'AI'}</div>`
           }
-        </div>
-      `;
+        </div>`;
     }).join('');
-
     document.getElementById('content-modal-overlay').classList.remove('hidden');
   }
 
@@ -643,14 +834,13 @@
     document.getElementById('content-modal-overlay').classList.add('hidden');
   };
 
-  // ── نشر المحتوى ───────────────────────────────────────────────────────────────
-  window.publishDeals = async function() {
+  // ── إضافة للانتظار ────────────────────────────────────────────────────────────
+  window.addToQueue = async function() {
     const btn = document.getElementById('btn-publish');
     btn.disabled = true;
-    btn.textContent = '⏳ جاري النشر...';
+    btn.textContent = '⏳ جاري الإضافة...';
 
-    // تحديث المحتوى من الـ textarea قبل الإرسال
-    const dealsToPublish = generatedContent
+    const dealsToAdd = generatedContent
       .filter(item => !item.error)
       .map((item, idx) => {
         const textarea = document.getElementById(`content-${idx}`);
@@ -661,28 +851,28 @@
         };
       });
 
-    if (dealsToPublish.length === 0) {
-      showToast('لا يوجد محتوى صالح للنشر', 'error');
+    if (dealsToAdd.length === 0) {
+      showToast('لا يوجد محتوى صالح للإضافة', 'error');
       btn.disabled = false;
-      btn.innerHTML = '📤 نشر المحتوى المحدد';
+      btn.innerHTML = '📋 إضافة لقائمة الانتظار';
       return;
     }
 
     try {
-      const resp = await fetch('/api/deals/publish', {
+      const resp = await fetch('/api/deals/add-to-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deals: dealsToPublish }),
+        body: JSON.stringify({ deals: dealsToAdd }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'خطأ في النشر');
+      if (!resp.ok) throw new Error(data.detail || 'خطأ في الإضافة');
 
       closeContentModal();
-      showToast(`✅ تم نشر ${data.published} منتج بنجاح!`, 'success');
+      const skippedMsg = data.skipped > 0 ? ` (تم تخطي ${data.skipped} منشور سابقاً)` : '';
+      showToast(`✅ تمت إضافة ${data.added} منتج لقائمة الانتظار${skippedMsg}!`, 'success');
 
-      // مسح التحديد بعد النشر
       selectedDeals.clear();
-      document.querySelectorAll('.deal-card.selected').forEach(card => {
+      document.querySelectorAll('.deal-card.selected, .deal-card-small.selected').forEach(card => {
         card.classList.remove('selected');
         card.querySelector('.select-overlay').textContent = '';
       });
@@ -691,11 +881,19 @@
       showToast(err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '📤 نشر المحتوى المحدد';
+      btn.innerHTML = '📋 إضافة لقائمة الانتظار';
     }
   };
 
   // ── مساعدات ──────────────────────────────────────────────────────────────────
+  function _formatRelativeTime(date) {
+    const diff = Math.round((Date.now() - date.getTime()) / 1000);
+    if (diff < 60) return 'منذ لحظات';
+    if (diff < 3600) return `منذ ${Math.round(diff / 60)} دقيقة`;
+    if (diff < 86400) return `منذ ${Math.round(diff / 3600)} ساعة`;
+    return `منذ ${Math.round(diff / 86400)} يوم`;
+  }
+
   function showToast(msg, type = 'info') {
     if (typeof window.toast === 'function') { window.toast(msg, type); return; }
     const container = document.getElementById('toast-container');
@@ -707,7 +905,6 @@
     setTimeout(() => el.remove(), 4000);
   }
 
-  // تشغيل
   loadCategories();
 })();
 </script>

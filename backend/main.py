@@ -344,6 +344,23 @@ async def get_queue():
 
 @app.post("/api/queue/{product_id}/approve")
 async def approve_product(product_id: int):
+    """قبول المنتج للجدولة — لا يُنشر فوراً بل ينتظر الموعد المجدول"""
+    from backend.config import SessionLocal
+    from backend.models import Product
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        product.status = "approved"
+        db.commit()
+
+    return {"success": True, "message": "تمت الموافقة — سيُنشر في الموعد المجدول"}
+
+
+@app.post("/api/queue/{product_id}/publish-now")
+async def publish_product_now(product_id: int):
+    """نشر فوري استثنائي بخلاف الجدولة"""
     from backend.config import SessionLocal
     from backend.models import Product
     from backend.services.publisher import publish_product
@@ -352,6 +369,8 @@ async def approve_product(product_id: int):
         product = db.get(Product, product_id)
         if not product:
             raise HTTPException(404, "المنتج غير موجود")
+        if product.status not in ("pending", "approved"):
+            raise HTTPException(400, "المنتج ليس في حالة انتظار")
         product.status = "approved"
         db.commit()
 
@@ -395,19 +414,140 @@ async def edit_product(product_id: int, body: EditProductBody):
 
 @app.post("/api/queue/approve-all")
 async def approve_all():
+    """قبول جميع المنتجات للجدولة — لا نشر فوري"""
     from backend.config import SessionLocal
     from backend.models import Product
-    from backend.services.publisher import publish_product
 
     with SessionLocal() as db:
         pending = db.query(Product).filter(Product.status == "pending").all()
-        ids = [p.id for p in pending]
+        count = len(pending)
         for p in pending:
             p.status = "approved"
         db.commit()
 
-    results = await asyncio.gather(*[publish_product(pid) for pid in ids], return_exceptions=True)
-    return {"success": True, "published": len(ids)}
+    return {"success": True, "approved": count, "message": f"تمت الموافقة على {count} منتج — ستُنشر حسب الجدولة"}
+
+
+@app.get("/api/queue/schedule-info")
+async def queue_schedule_info():
+    """معلومات الجدولة القادمة وعدد المنتجات في كل حالة"""
+    from backend.config import SessionLocal, get_setting
+    from backend.models import Product
+    from datetime import datetime
+
+    with SessionLocal() as db:
+        pending_count = db.query(Product).filter(Product.status == "pending").count()
+        approved_count = db.query(Product).filter(Product.status == "approved").count()
+
+    # احسب الموعد القادم
+    now = datetime.now()
+    slots = []
+    for key, time_key, enabled_key in [
+        ("morning", "time_morning", "schedule_morning"),
+        ("afternoon", "time_afternoon", "schedule_afternoon"),
+        ("evening", "time_evening", "schedule_evening"),
+    ]:
+        if get_setting(enabled_key, True):
+            t = get_setting(time_key, "08:00")
+            h, m = int(t.split(":")[0]), int(t.split(":")[1])
+            slots.append((h, m, t))
+
+    next_time = None
+    for h, m, t in sorted(slots, key=lambda x: (x[0], x[1])):
+        if (h, m) > (now.hour, now.minute):
+            next_time = t
+            break
+    if not next_time and slots:
+        next_time = sorted(slots, key=lambda x: (x[0], x[1]))[0][2] + " (غداً)"
+
+    return {
+        "pending_count": pending_count,
+        "approved_count": approved_count,
+        "next_publish_at": next_time,
+        "posts_per_slot": get_setting("posts_per_slot", 1),
+    }
+
+
+# ── عرض اليوم ─────────────────────────────────────────────────────────────────
+@app.post("/api/products/{product_id}/deal-of-day")
+async def set_deal_of_day(product_id: int):
+    """تعيين منتج كعرض اليوم — يلغي عرض اليوم السابق تلقائياً"""
+    from backend.config import SessionLocal
+    from backend.models import Product
+
+    with SessionLocal() as db:
+        db.query(Product).filter(Product.is_deal_of_day == True).update({"is_deal_of_day": False})
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        product.is_deal_of_day = True
+        db.commit()
+    return {"success": True, "message": "تم تعيين عرض اليوم"}
+
+
+@app.delete("/api/products/{product_id}/deal-of-day")
+async def unset_deal_of_day(product_id: int):
+    """إلغاء تعيين عرض اليوم"""
+    from backend.config import SessionLocal
+    from backend.models import Product
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        product.is_deal_of_day = False
+        db.commit()
+    return {"success": True}
+
+
+@app.post("/api/products/{product_id}/regenerate-deal-of-day")
+async def regenerate_deal_of_day_content(product_id: int):
+    """توليد محتوى خاص بعرض اليوم — أكثر إثارة وعجلة"""
+    from backend.config import SessionLocal
+    from backend.models import Product
+    from backend.services.ai_service import generate_deal_of_day_content
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        product_data = {
+            "title": product.title,
+            "price_original": product.price_original,
+            "price_current": product.price_current,
+            "discount_pct": product.discount_pct,
+            "rating": product.rating,
+            "rating_count": product.rating_count,
+            "affiliate_url": product.affiliate_url or "",
+        }
+
+    content, model_used = await generate_deal_of_day_content(product_data)
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        product.ai_content = content
+        product.ai_model_used = model_used
+        db.commit()
+
+    return {"success": True, "content": content, "model_used": model_used}
+
+
+# ── الاكتشاف التلقائي ──────────────────────────────────────────────────────────
+@app.post("/api/deals/auto-discover-and-queue")
+async def auto_discover_and_queue_endpoint(request: Request):
+    """اكتشاف تلقائي للعروض وإضافتها لقائمة الانتظار"""
+    from backend.config import get_setting
+    from backend.services.deals_finder_service import auto_discover_and_queue
+
+    categories_count = get_setting("auto_discover_categories_count", 5)
+    try:
+        result = await auto_discover_and_queue(max_categories=categories_count)
+        return {"success": True, **result}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.error(f"خطأ في الاكتشاف التلقائي: {exc}")
+        raise HTTPException(500, f"خطأ في الاكتشاف التلقائي: {exc}")
 
 
 # ── سجل النشر ──────────────────────────────────────────────────────────────────
@@ -984,6 +1124,10 @@ def _product_to_dict(p) -> dict:
         "ai_content": p.ai_content,
         "ai_model_used": p.ai_model_used,
         "status": p.status,
+        "is_deal_of_day": getattr(p, "is_deal_of_day", False) or False,
+        "total_clicks": getattr(p, "total_clicks", 0) or 0,
+        "telegram_post_id": getattr(p, "telegram_post_id", None),
+        "x_tweet_id": getattr(p, "x_tweet_id", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "published_at": p.published_at.isoformat() if p.published_at else None,
     }

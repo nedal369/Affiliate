@@ -16,7 +16,7 @@ class Product(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(500), nullable=False)
     title_ar = Column(String(500), nullable=True)
-    source = Column(String(50), nullable=True)          # tiktok | instagram | keyword
+    source = Column(String(50), nullable=True)          # tiktok | instagram | keyword | deals_finder
     source_account = Column(String(200), nullable=True)
     source_views = Column(Integer, default=0)
     amazon_asin = Column(String(20), nullable=True)
@@ -33,6 +33,11 @@ class Product(Base):
     status = Column(String(50), default="pending")      # pending|approved|rejected|published|failed
     created_at = Column(DateTime, default=datetime.utcnow)
     published_at = Column(DateTime, nullable=True)
+    # ── حقول التفاعل والتميّز ──────────────────────────────────────────────────
+    is_deal_of_day = Column(Boolean, default=False)     # عرض اليوم المميّز
+    total_clicks = Column(Integer, default=0)           # نقرات رابط الإحالة
+    telegram_post_id = Column(String(100), nullable=True)  # message_id على Telegram
+    x_tweet_id = Column(String(100), nullable=True)    # tweet_id على X
 
     __table_args__ = (
         Index("ix_products_status", "status"),
@@ -48,6 +53,7 @@ class PublishLog(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     channel = Column(String(50), nullable=False)        # telegram|whatsapp|x
     success = Column(Boolean, default=False)
+    post_id = Column(String(100), nullable=True)        # message_id أو tweet_id
     clicks = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     published_at = Column(DateTime, default=datetime.utcnow)
