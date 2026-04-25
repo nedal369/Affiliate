@@ -367,10 +367,11 @@ async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict
     return products[:5]
 
 
-async def discover_deals(category_ids: list[str]) -> dict:
+async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = None) -> dict:
     """
     الوظيفة الرئيسية: تجلب أفضل العروض للتصنيفات المحددة.
-    تُرجع: {"category_id": [list of 5 deals], ...}
+    seen_asins: {category_id: [asin1, asin2, ...]} — ASINs سبق عرضها (تُستبعد)
+    تُرجع: {"category_id": [list of deals], ...}
     """
     from backend.config import get_api_key, get_setting
 
