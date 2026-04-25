@@ -188,16 +188,84 @@ async def _call_openai(model_id: str, user_prompt: str) -> str:
     return response.choices[0].message.content
 
 
-async def _call_google(model_id: str, user_prompt: str) -> str:
+_GEMINI_SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+]
+
+_GEMINI_FINISH_REASONS = {
+    0: "UNSPECIFIED",
+    1: "STOP",
+    2: "MAX_TOKENS",
+    3: "SAFETY",
+    4: "RECITATION",
+    5: "OTHER",
+}
+
+
+async def _call_gemini(model_id: str, system_prompt: str, user_prompt: str) -> str:
+    """
+    استدعاء Gemini مع معالجة شاملة لكل حالات الفشل.
+    يلتقط: response.text المفقود، الحجب بـ safety filters، الردود الفارغة.
+    """
     from backend.config import get_api_key
     api_key = get_api_key("google")
     if not api_key:
         raise ValueError("مفتاح Google Gemini غير موجود")
     import google.generativeai as genai
+
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_id, system_instruction=SYSTEM_PROMPT)
+    model = genai.GenerativeModel(
+        model_id,
+        system_instruction=system_prompt,
+        safety_settings=_GEMINI_SAFETY_SETTINGS,
+    )
     response = await asyncio.to_thread(model.generate_content, user_prompt)
-    return response.text
+
+    if not response:
+        raise RuntimeError("Gemini returned None response")
+
+    # فحص prompt feedback (هل تم حجب الـ prompt نفسه؟)
+    pf = getattr(response, "prompt_feedback", None)
+    if pf:
+        block_reason = getattr(pf, "block_reason", None)
+        if block_reason:
+            raise RuntimeError(f"Gemini prompt blocked: {block_reason}")
+
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        raise RuntimeError("Gemini returned no candidates (likely blocked)")
+
+    candidate = candidates[0]
+    finish_reason = getattr(candidate, "finish_reason", None)
+    fr_value = int(finish_reason) if finish_reason is not None else 0
+    fr_name = _GEMINI_FINISH_REASONS.get(fr_value, str(finish_reason))
+
+    if fr_value not in (1, 2):  # STOP أو MAX_TOKENS مقبولان
+        raise RuntimeError(f"Gemini blocked content (finish_reason={fr_name})")
+
+    # محاولة استخراج النص بأمان
+    text = ""
+    try:
+        text = response.text or ""
+    except Exception as e:
+        # أحياناً response.text يرمي عند parts فارغة
+        try:
+            parts = getattr(candidate.content, "parts", []) or []
+            text = "".join(getattr(p, "text", "") for p in parts)
+        except Exception:
+            raise RuntimeError(f"Gemini text extraction failed: {e}")
+
+    if not text or len(text.strip()) < 10:
+        raise RuntimeError(f"Gemini returned empty/short text (finish={fr_name})")
+
+    return text
+
+
+async def _call_google(model_id: str, user_prompt: str) -> str:
+    return await _call_gemini(model_id, SYSTEM_PROMPT, user_prompt)
 
 
 async def _call_groq(model_id: str, user_prompt: str) -> str:
@@ -308,6 +376,11 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
             content = await caller(model_id, user_prompt)
             if content and len(content) > 30:
                 return content, model_id
+            # تسجيل صريح بدلاً من التخطي الصامت
+            last_error = RuntimeError(f"{model_id} returned short/empty content (len={len(content) if content else 0})")
+            logger.warning(f"فشل {model_id}: محتوى قصير أو فارغ")
+            if not fallback_enabled:
+                break
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id}: {exc}")
@@ -407,15 +480,7 @@ async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
                 )
                 return resp.choices[0].message.content
             elif provider == "google":
-                from backend.config import get_api_key
-                import google.generativeai as genai
-                api_key = get_api_key("google")
-                if not api_key:
-                    continue
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(mid, system_instruction=system or "أنت مساعد ذكي.")
-                resp = await asyncio.to_thread(model.generate_content, prompt)
-                return resp.text
+                return await _call_gemini(mid, system or "أنت مساعد ذكي.", prompt)
             elif provider == "groq":
                 from backend.config import get_api_key
                 from groq import AsyncGroq

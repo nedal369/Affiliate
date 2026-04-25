@@ -2,8 +2,8 @@
 <style>
   .categories-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
     margin-bottom: 24px;
   }
   .category-card {
@@ -197,18 +197,24 @@
   }
 
   .bottom-bar {
-    position: sticky;
+    position: fixed;
     bottom: 0;
+    right: 0;
+    left: var(--sidebar-width);
     background: var(--card);
     border-top: 1px solid var(--border);
     padding: 14px 32px;
-    margin: 0 -32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
     z-index: 50;
+  }
+  /* Spacer to prevent bottom-bar from covering content */
+  .bottom-bar-spacer { height: 70px; }
+  @media (max-width: 768px) {
+    .bottom-bar { left: 0; }
   }
   .bottom-bar .selection-info { font-size: 13px; color: var(--text-secondary); }
   .bottom-bar .selection-count { font-weight: 700; color: var(--text-primary); }
@@ -299,6 +305,9 @@
 
 <!-- نتائج البحث -->
 <div id="results-section" class="results-section hidden"></div>
+
+<!-- Spacer to make room for fixed bottom-bar -->
+<div class="bottom-bar-spacer hidden" id="bottom-bar-spacer"></div>
 
 <!-- الشريط السفلي -->
 <div class="bottom-bar hidden" id="bottom-bar">
@@ -406,6 +415,7 @@
     discoveredDeals = {};
     selectedDeals.clear();
     document.getElementById('bottom-bar').classList.add('hidden');
+    document.getElementById('bottom-bar-spacer').classList.add('hidden');
 
     // محاكاة شريط التقدم
     let progress = 5;
@@ -493,6 +503,7 @@
 
     section.innerHTML = html;
     document.getElementById('bottom-bar').classList.remove('hidden');
+    document.getElementById('bottom-bar-spacer').classList.remove('hidden');
     updateSelectionBar();
   }
 
@@ -678,7 +689,8 @@
       if (!resp.ok) throw new Error(data.detail || 'خطأ في النشر');
 
       closeContentModal();
-      showToast(`✅ تم نشر ${data.published} منتج بنجاح!`, 'success');
+      const skippedMsg = data.skipped > 0 ? ` (تم تخطي ${data.skipped} منشور سابقاً)` : '';
+      showToast(`✅ تم نشر ${data.published} منتج بنجاح${skippedMsg}!`, 'success');
 
       // مسح التحديد بعد النشر
       selectedDeals.clear();

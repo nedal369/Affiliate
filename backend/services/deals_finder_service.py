@@ -14,54 +14,61 @@ logger = logging.getLogger(__name__)
 # ── التصنيفات المدعومة ────────────────────────────────────────────────────────────
 
 CATEGORIES = [
-    {
-        "id": "household",
-        "name_ar": "مستلزمات المنزل",
-        "icon": "🏠",
-        "keywords": ["kitchen appliances", "vacuum cleaner", "air fryer", "coffee maker"],
-    },
-    {
-        "id": "gaming",
-        "name_ar": "أجهزة الألعاب",
-        "icon": "🎮",
-        "keywords": ["gaming headset", "gaming controller", "gaming keyboard", "gaming mouse"],
-    },
-    {
-        "id": "electronics",
-        "name_ar": "إلكترونيات",
-        "icon": "📱",
-        "keywords": ["wireless earbuds", "bluetooth speaker", "smart watch", "power bank"],
-    },
-    {
-        "id": "beauty",
-        "name_ar": "العناية والتجميل",
-        "icon": "💄",
-        "keywords": ["electric toothbrush", "hair dryer", "face wash", "perfume"],
-    },
-    {
-        "id": "sports",
-        "name_ar": "رياضة ولياقة",
-        "icon": "🏋️",
-        "keywords": ["yoga mat", "resistance bands", "water bottle", "fitness tracker"],
-    },
-    {
-        "id": "kids",
-        "name_ar": "منتجات الأطفال",
-        "icon": "🧸",
-        "keywords": ["educational toys", "lego", "baby monitor", "kids headphones"],
-    },
-    {
-        "id": "fashion",
-        "name_ar": "ملابس وأزياء",
-        "icon": "👗",
-        "keywords": ["sunglasses", "backpack", "wallet", "belt"],
-    },
-    {
-        "id": "office",
-        "name_ar": "مكتب وقرطاسية",
-        "icon": "📝",
-        "keywords": ["mechanical keyboard", "webcam", "desk lamp", "mouse pad"],
-    },
+    # ── المنزل والمطبخ ─────────────────────────────
+    {"id": "groceries", "name_ar": "المقاضي والبقالة", "icon": "🛒",
+     "keywords": ["coffee beans", "olive oil", "honey", "dates", "nuts mix", "spices set"]},
+    {"id": "kitchen_appliances", "name_ar": "الأجهزة المنزلية الصغيرة", "icon": "🍳",
+     "keywords": ["air fryer", "rice cooker", "blender", "coffee maker", "stand mixer", "electric kettle"]},
+    {"id": "kitchen_tools", "name_ar": "أدوات المطبخ", "icon": "🍴",
+     "keywords": ["non stick pan set", "kitchen knife set", "food storage containers", "cookware set", "cutting board", "measuring cups"]},
+    {"id": "cleaning", "name_ar": "التنظيف والعناية بالمنزل", "icon": "🧹",
+     "keywords": ["vacuum cleaner", "robot vacuum", "steam mop", "air purifier", "humidifier", "iron steamer"]},
+    {"id": "bedding", "name_ar": "أغطية وأقمشة المنزل", "icon": "🛏️",
+     "keywords": ["bed sheets king", "memory foam pillow", "comforter set", "blackout curtains", "bath towel set", "weighted blanket"]},
+    {"id": "home_decor", "name_ar": "ديكور المنزل", "icon": "🪴",
+     "keywords": ["wall clock", "led lights strip", "table lamp", "wall art", "artificial plants", "diffuser oil"]},
+
+    # ── العناية الشخصية ─────────────────────────────
+    {"id": "perfumes", "name_ar": "العطور", "icon": "🌸",
+     "keywords": ["men perfume", "women perfume", "oud perfume", "body spray", "cologne", "incense bakhoor"]},
+    {"id": "skincare", "name_ar": "العناية بالبشرة", "icon": "✨",
+     "keywords": ["face cream", "vitamin c serum", "sunscreen", "face wash", "moisturizer", "anti aging cream"]},
+    {"id": "haircare", "name_ar": "العناية بالشعر", "icon": "💇",
+     "keywords": ["hair dryer", "hair straightener", "hair oil", "shampoo set", "hair clipper", "scalp brush"]},
+    {"id": "personal_care", "name_ar": "العناية الشخصية", "icon": "🪥",
+     "keywords": ["electric toothbrush", "shaver men", "epilator", "nail kit", "facial cleansing brush", "teeth whitening"]},
+
+    # ── الإلكترونيات والتقنية ─────────────────────────
+    {"id": "audio", "name_ar": "الصوتيات والسماعات", "icon": "🎧",
+     "keywords": ["wireless earbuds", "noise cancelling headphones", "bluetooth speaker", "soundbar", "studio headphones", "portable speaker"]},
+    {"id": "phone_accessories", "name_ar": "اكسسوارات الجوال", "icon": "📱",
+     "keywords": ["phone charger fast", "power bank 20000", "phone case", "screen protector", "wireless charger", "car phone holder"]},
+    {"id": "smart_home", "name_ar": "المنزل الذكي", "icon": "💡",
+     "keywords": ["smart bulb", "smart plug", "security camera", "video doorbell", "smart speaker", "wifi extender"]},
+    {"id": "wearables", "name_ar": "الساعات الذكية واللياقة", "icon": "⌚",
+     "keywords": ["smart watch", "fitness tracker", "apple watch band", "heart rate monitor", "smart ring", "kids smart watch"]},
+    {"id": "gaming", "name_ar": "الألعاب والقيمنق", "icon": "🎮",
+     "keywords": ["gaming headset", "mechanical keyboard rgb", "gaming mouse", "gaming chair", "console controller", "gaming monitor"]},
+
+    # ── الأسرة والأطفال ─────────────────────────────
+    {"id": "kids_toys", "name_ar": "ألعاب الأطفال", "icon": "🧸",
+     "keywords": ["lego building blocks", "educational toys", "remote control car", "kids puzzle", "doll house", "stuffed animals"]},
+    {"id": "baby", "name_ar": "مستلزمات الأطفال الرضع", "icon": "👶",
+     "keywords": ["baby monitor", "baby stroller", "diaper bag", "baby bottle warmer", "baby carrier", "kids tablet"]},
+
+    # ── الرياضة والصحة ─────────────────────────────
+    {"id": "sports", "name_ar": "الرياضة واللياقة", "icon": "🏋️",
+     "keywords": ["adjustable dumbbells", "yoga mat", "resistance bands set", "treadmill foldable", "exercise bike", "protein shaker"]},
+    {"id": "outdoor", "name_ar": "الرحلات والتخييم", "icon": "⛺",
+     "keywords": ["camping tent", "portable cooler", "sleeping bag", "camping chair", "outdoor grill", "hiking backpack"]},
+
+    # ── أخرى مطلوبة سعودياً ─────────────────────────
+    {"id": "car", "name_ar": "اكسسوارات السيارة", "icon": "🚗",
+     "keywords": ["car vacuum", "dash cam", "car air freshener", "car seat cover", "tire inflator", "jump starter"]},
+    {"id": "office", "name_ar": "المكتب والعمل من المنزل", "icon": "💻",
+     "keywords": ["ergonomic office chair", "monitor stand", "desk lamp led", "laptop stand", "webcam hd", "wireless mouse"]},
+    {"id": "islamic", "name_ar": "المنتجات الإسلامية", "icon": "🕌",
+     "keywords": ["prayer mat", "quran reader pen", "digital tasbih", "azan clock", "prayer rug travel", "islamic decor"]},
 ]
 
 _RAPIDAPI_HOST = "real-time-amazon-data.p.rapidapi.com"
@@ -129,13 +136,41 @@ async def _rapidapi_search(keyword: str, country: str, api_key: str) -> list[dic
     return results
 
 
-async def _rapidapi_bestsellers(category_keyword: str, country: str, api_key: str) -> list[dict]:
-    """جلب الأكثر مبيعاً كـ fallback"""
+# خريطة من id التصنيف الداخلي إلى category slug عند RapidAPI bestsellers
+_BESTSELLER_CATEGORY_MAP = {
+    "groceries": "grocery",
+    "kitchen_appliances": "kitchen",
+    "kitchen_tools": "kitchen",
+    "cleaning": "kitchen",
+    "bedding": "home",
+    "home_decor": "home",
+    "perfumes": "beauty",
+    "skincare": "beauty",
+    "haircare": "beauty",
+    "personal_care": "beauty",
+    "audio": "electronics",
+    "phone_accessories": "wireless",
+    "smart_home": "smart-home",
+    "wearables": "electronics",
+    "gaming": "videogames",
+    "kids_toys": "toys",
+    "baby": "baby-products",
+    "sports": "sports",
+    "outdoor": "sports",
+    "car": "automotive",
+    "office": "office-products",
+    "islamic": "home",
+}
+
+
+async def _rapidapi_bestsellers(category_id: str, country: str, api_key: str) -> list[dict]:
+    """جلب الأكثر مبيعاً للتصنيف كـ fallback"""
     headers = {
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": _RAPIDAPI_HOST,
     }
-    params = {"country": country, "category": "aps", "page": "1"}
+    category_slug = _BESTSELLER_CATEGORY_MAP.get(category_id, "aps")
+    params = {"country": country, "category": category_slug, "page": "1"}
     try:
         timeout = aiohttp.ClientTimeout(total=25)
         async with aiohttp.ClientSession() as session:
@@ -244,13 +279,30 @@ def _parse_product(item: dict, country: str) -> Optional[dict]:
     }
 
 
+_STOP_WORDS = {
+    "the", "a", "an", "for", "with", "and", "of", "to", "in", "on", "by",
+    "new", "best", "premium", "professional", "set", "kit", "pack", "size",
+}
+
+
+def _product_signature(title: str) -> str:
+    """تستخرج 'نوع' المنتج من العنوان لتجنب التكرار النوعي.
+    مثال: 'Anker Wireless Earbuds Pro' و 'Sony Wireless Earbuds Plus' → نفس النوع 'wireless earbuds'
+    """
+    if not title:
+        return ""
+    words = [w.lower().strip(".,!?-()[]{}") for w in title.split()]
+    meaningful = [w for w in words if w and w not in _STOP_WORDS and len(w) > 2 and not w.isdigit()]
+    return " ".join(meaningful[:2]) if len(meaningful) >= 2 else (meaningful[0] if meaningful else "")
+
+
 def _sort_and_deduplicate(products: list[dict]) -> list[dict]:
-    """إزالة التكرار وترتيب حسب الجودة"""
-    seen = set()
+    """إزالة التكرار وترتيب حسب الجودة + تنويع المنتجات"""
+    seen_asins = set()
     unique = []
     for p in products:
-        if p["asin"] not in seen:
-            seen.add(p["asin"])
+        if p["asin"] not in seen_asins:
+            seen_asins.add(p["asin"])
             unique.append(p)
 
     def score(p):
@@ -260,7 +312,26 @@ def _sort_and_deduplicate(products: list[dict]) -> list[dict]:
         return discount * 0.5 + rating * 10 + count / 1000
 
     unique.sort(key=score, reverse=True)
-    return unique
+
+    # تنويع: حد أقصى منتجين بنفس "نوع" المنتج (نفس بداية العنوان)
+    diverse = []
+    type_counts: dict[str, int] = {}
+    overflow = []  # المنتجات التي تجاوزت الحد، نرجع لها إذا لم نملأ 15
+    for p in unique:
+        sig = _product_signature(p.get("title", ""))
+        if type_counts.get(sig, 0) < 2:
+            diverse.append(p)
+            type_counts[sig] = type_counts.get(sig, 0) + 1
+        else:
+            overflow.append(p)
+        if len(diverse) >= 15:
+            break
+
+    # إذا حصلنا على أقل من 15، نملأ من overflow
+    if len(diverse) < 15:
+        diverse.extend(overflow[:15 - len(diverse)])
+
+    return diverse
 
 
 async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict]:
@@ -300,18 +371,41 @@ async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict
         system = "أنت خبير في اكتشاف أفضل العروض على أمازون للسوق السعودي."
         raw = await call_ai(prompt, system=system)
 
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            parsed = json.loads(raw[start:end])
-            indices = parsed.get("selected", [])
-            selected = []
-            for idx in indices:
-                if 1 <= idx <= len(products):
-                    selected.append(products[idx - 1])
-            if len(selected) >= 3:
-                logger.info(f"AI اختار {len(selected)} منتجات لـ '{category_name}'")
-                return selected[:5]
+        # تنظيف: إزالة code blocks (```json ... ```)
+        import re
+        clean = re.sub(r"```(?:json)?\s*", "", raw or "").replace("```", "").strip()
+
+        # البحث عن أول كائن JSON يحتوي "selected"
+        match = re.search(r'\{[^{}]*"selected"[^{}]*\}', clean, re.DOTALL)
+        json_str = match.group(0) if match else None
+
+        # fallback: إذا لم نجد بالـ regex، جرّب من أول { لآخر }
+        if not json_str:
+            start = clean.find("{")
+            end = clean.rfind("}") + 1
+            if start >= 0 and end > start:
+                json_str = clean[start:end]
+
+        if json_str:
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                logger.warning(f"AI returned invalid JSON for '{category_name}': {e} — raw: {raw[:200]}")
+                parsed = None
+
+            if parsed:
+                indices = parsed.get("selected", [])
+                selected = []
+                for idx in indices:
+                    try:
+                        i = int(idx)
+                        if 1 <= i <= len(products):
+                            selected.append(products[i - 1])
+                    except (ValueError, TypeError):
+                        continue
+                if len(selected) >= 3:
+                    logger.info(f"AI اختار {len(selected)} منتجات لـ '{category_name}'")
+                    return selected[:5]
     except Exception as exc:
         logger.warning(f"AI selection failed for '{category_name}': {exc} — using score-based fallback")
 

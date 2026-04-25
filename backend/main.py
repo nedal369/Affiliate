@@ -539,12 +539,13 @@ async def test_key(service: str):
         if not api_key:
             return {"success": False, "message": "المفتاح غير موجود"}
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            models = await asyncio.to_thread(genai.list_models)
-            return {"success": True, "message": "متصل ✓ — Gemini جاهز"}
+            # اختبار توليد فعلي بدلاً من list_models — يكشف مشاكل safety filters
+            from backend.services.ai_service import _call_gemini
+            text = await _call_gemini("gemini-1.5-flash", "أنت مساعد.", "قل: مرحبا")
+            preview = (text or "").strip()[:30]
+            return {"success": True, "message": f"متصل ✓ — Gemini يولّد ({preview})"}
         except Exception as e:
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": f"الاتصال نجح لكن التوليد فشل: {e}"}
 
     elif service == "groq":
         if not api_key:
@@ -919,17 +920,28 @@ async def publish_deals(body: PublishDealsBody, request: Request):
     from backend.config import SessionLocal
     from backend.models import Product
     from backend.services.publisher import publish_product
+    from backend.services.amazon_service import is_product_posted_before
 
     published_count = 0
+    skipped_count = 0
     results = []
 
     for deal in body.deals:
+        asin = deal.get("asin", "")
         try:
+            # تخطي المنتجات المنشورة سابقاً
+            if asin and await is_product_posted_before(asin):
+                skipped_count += 1
+                results.append({"asin": asin, "success": False, "skipped": True, "error": "تم نشر هذا المنتج مسبقاً"})
+                continue
+
+            title = deal.get("title", "")
             with SessionLocal() as db:
                 product = Product(
-                    title=deal.get("title", ""),
+                    title=title,
+                    title_ar=deal.get("title_ar") or title,
                     source="deals_finder",
-                    amazon_asin=deal.get("asin", ""),
+                    amazon_asin=asin,
                     amazon_url=deal.get("amazon_url", ""),
                     affiliate_url=deal.get("affiliate_url", ""),
                     price_original=deal.get("price_original", 0),
@@ -949,12 +961,18 @@ async def publish_deals(body: PublishDealsBody, request: Request):
 
             pub_result = await publish_product(product_id)
             published_count += 1
-            results.append({"asin": deal.get("asin", ""), "success": True, "product_id": product_id, **pub_result})
+            results.append({"asin": asin, "success": True, "product_id": product_id, **pub_result})
         except Exception as exc:
-            logger.error(f"خطأ في نشر المنتج {deal.get('asin', '')}: {exc}")
-            results.append({"asin": deal.get("asin", ""), "success": False, "error": str(exc)})
+            logger.error(f"خطأ في نشر المنتج {asin}: {exc}")
+            results.append({"asin": asin, "success": False, "error": str(exc)})
 
-    return {"success": True, "published": published_count, "total": len(body.deals), "results": results}
+    return {
+        "success": True,
+        "published": published_count,
+        "skipped": skipped_count,
+        "total": len(body.deals),
+        "results": results,
+    }
 
 
 # ── Health Check ──────────────────────────────────────────────────────────────────
