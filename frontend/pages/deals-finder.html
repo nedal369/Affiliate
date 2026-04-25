@@ -332,8 +332,8 @@
     <div class="modal-body" id="content-modal-body" style="max-height:60vh;overflow-y:auto;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeContentModal()">إغلاق</button>
-      <button class="btn btn-success" id="btn-publish" onclick="publishDeals()">
-        📤 نشر المحتوى المحدد
+      <button class="btn btn-success" id="btn-publish" onclick="addToQueue()">
+        📋 إضافة لقائمة الانتظار
       </button>
     </div>
   </div>
@@ -346,6 +346,7 @@
   let discoveredDeals = {};   // { category_id: [deals] }
   let selectedDeals = new Set();  // Set of deal keys "cat_id:asin"
   let generatedContent = [];  // [{asin, content, model_used, deal}]
+  let seenAsins = {};          // { category_id: Set<asin> } — لتتبع ما تم عرضه
 
   // ── تحميل التصنيفات ─────────────────────────────────────────────────────────
   async function loadCategories() {
@@ -429,11 +430,22 @@
       }
     }, 1200);
 
+    // بناء قائمة ASINs التي سبق عرضها (لكل تصنيف محدد)
+    const seenAsinsPayload = {};
+    for (const catId of selectedCategories) {
+      if (seenAsins[catId] && seenAsins[catId].size > 0) {
+        seenAsinsPayload[catId] = [...seenAsins[catId]];
+      }
+    }
+
     try {
       const resp = await fetch('/api/deals/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category_ids: [...selectedCategories] }),
+        body: JSON.stringify({
+          category_ids: [...selectedCategories],
+          seen_asins: Object.keys(seenAsinsPayload).length > 0 ? seenAsinsPayload : null,
+        }),
       });
 
       clearInterval(progressInterval);
@@ -447,6 +459,13 @@
       const data = await resp.json();
       discoveredDeals = data.results || {};
       progressText.textContent = '✅ اكتمل البحث!';
+
+      // تسجيل ASINs الجديدة في seenAsins
+      for (const [catId, deals] of Object.entries(discoveredDeals)) {
+        if (!seenAsins[catId]) seenAsins[catId] = new Set();
+        (deals || []).forEach(d => seenAsins[catId].add(d.asin));
+      }
+
       renderResults();
     } catch (err) {
       clearInterval(progressInterval);
@@ -654,14 +673,14 @@
     document.getElementById('content-modal-overlay').classList.add('hidden');
   };
 
-  // ── نشر المحتوى ───────────────────────────────────────────────────────────────
-  window.publishDeals = async function() {
+  // ── إضافة للانتظار ────────────────────────────────────────────────────────────
+  window.addToQueue = async function() {
     const btn = document.getElementById('btn-publish');
     btn.disabled = true;
-    btn.textContent = '⏳ جاري النشر...';
+    btn.textContent = '⏳ جاري الإضافة...';
 
     // تحديث المحتوى من الـ textarea قبل الإرسال
-    const dealsToPublish = generatedContent
+    const dealsToAdd = generatedContent
       .filter(item => !item.error)
       .map((item, idx) => {
         const textarea = document.getElementById(`content-${idx}`);
@@ -672,27 +691,26 @@
         };
       });
 
-    if (dealsToPublish.length === 0) {
-      showToast('لا يوجد محتوى صالح للنشر', 'error');
+    if (dealsToAdd.length === 0) {
+      showToast('لا يوجد محتوى صالح للإضافة', 'error');
       btn.disabled = false;
-      btn.innerHTML = '📤 نشر المحتوى المحدد';
+      btn.innerHTML = '📋 إضافة لقائمة الانتظار';
       return;
     }
 
     try {
-      const resp = await fetch('/api/deals/publish', {
+      const resp = await fetch('/api/deals/add-to-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deals: dealsToPublish }),
+        body: JSON.stringify({ deals: dealsToAdd }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'خطأ في النشر');
+      if (!resp.ok) throw new Error(data.detail || 'خطأ في الإضافة');
 
       closeContentModal();
       const skippedMsg = data.skipped > 0 ? ` (تم تخطي ${data.skipped} منشور سابقاً)` : '';
-      showToast(`✅ تم نشر ${data.published} منتج بنجاح${skippedMsg}!`, 'success');
+      showToast(`✅ تمت إضافة ${data.added} منتج لقائمة الانتظار${skippedMsg}!`, 'success');
 
-      // مسح التحديد بعد النشر
       selectedDeals.clear();
       document.querySelectorAll('.deal-card.selected').forEach(card => {
         card.classList.remove('selected');
@@ -703,7 +721,7 @@
       showToast(err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '📤 نشر المحتوى المحدد';
+      btn.innerHTML = '📋 إضافة لقائمة الانتظار';
     }
   };
 

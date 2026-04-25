@@ -334,19 +334,19 @@ def _sort_and_deduplicate(products: list[dict]) -> list[dict]:
     return diverse
 
 
-async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict]:
+async def _ai_select_top7(products: list[dict], category_name: str) -> list[dict]:
     """
-    يطلب من AI اختيار أفضل 5 منتجات من القائمة.
-    إذا فشل AI يُرجع أفضل 5 حسب الترتيب الحسابي.
+    يطلب من AI اختيار أفضل 7 منتجات من القائمة.
+    إذا فشل AI يُرجع أفضل 7 حسب الترتيب الحسابي.
     """
-    if len(products) <= 5:
+    if len(products) <= 7:
         return products
 
     try:
         from backend.services.ai_service import call_ai
 
         products_summary = []
-        for i, p in enumerate(products[:20]):
+        for i, p in enumerate(products[:25]):
             products_summary.append(
                 f"{i+1}. ASIN:{p['asin']} | {p['title'][:60]} | "
                 f"السعر:{p['price_current']} | الخصم:{p['discount_pct']}% | "
@@ -357,29 +357,27 @@ async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict
 
 {chr(10).join(products_summary)}
 
-اختر أفضل 5 منتجات فقط بناءً على:
+اختر أفضل 7 منتجات فقط بناءً على:
 1. نسبة الخصم (كلما زادت كان أفضل)
 2. التقييم (كلما ارتفع كان أفضل)
 3. شعبية المنتج وعدد التقييمات
 4. قيمة المنتج (هل السعر مناسب بعد الخصم؟)
+5. تنوع المنتجات (اختر أنواعاً مختلفة قدر الإمكان)
 
 أجب بـ JSON فقط — مصفوفة من أرقام المنتجات المختارة (1-based) بالترتيب من الأفضل للأقل:
-{{"selected": [رقم1, رقم2, رقم3, رقم4, رقم5]}}
+{{"selected": [رقم1, رقم2, رقم3, رقم4, رقم5, رقم6, رقم7]}}
 
 لا تضف أي نص آخر خارج الـ JSON."""
 
         system = "أنت خبير في اكتشاف أفضل العروض على أمازون للسوق السعودي."
         raw = await call_ai(prompt, system=system)
 
-        # تنظيف: إزالة code blocks (```json ... ```)
         import re
         clean = re.sub(r"```(?:json)?\s*", "", raw or "").replace("```", "").strip()
 
-        # البحث عن أول كائن JSON يحتوي "selected"
         match = re.search(r'\{[^{}]*"selected"[^{}]*\}', clean, re.DOTALL)
         json_str = match.group(0) if match else None
 
-        # fallback: إذا لم نجد بالـ regex، جرّب من أول { لآخر }
         if not json_str:
             start = clean.find("{")
             end = clean.rfind("}") + 1
@@ -405,17 +403,18 @@ async def _ai_select_top5(products: list[dict], category_name: str) -> list[dict
                         continue
                 if len(selected) >= 3:
                     logger.info(f"AI اختار {len(selected)} منتجات لـ '{category_name}'")
-                    return selected[:5]
+                    return selected[:7]
     except Exception as exc:
         logger.warning(f"AI selection failed for '{category_name}': {exc} — using score-based fallback")
 
-    return products[:5]
+    return products[:7]
 
 
-async def discover_deals(category_ids: list[str]) -> dict:
+async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = None) -> dict:
     """
     الوظيفة الرئيسية: تجلب أفضل العروض للتصنيفات المحددة.
-    تُرجع: {"category_id": [list of 5 deals], ...}
+    seen_asins: {category_id: [asin1, asin2, ...]} — ASINs سبق عرضها لهذا التصنيف (تُستبعد)
+    تُرجع: {"category_id": [list of 7 deals], ...}
     """
     from backend.config import get_api_key, get_setting
 
@@ -424,6 +423,7 @@ async def discover_deals(category_ids: list[str]) -> dict:
         raise ValueError("مفتاح RapidAPI غير موجود — أضفه من صفحة مفاتيح API")
 
     marketplace = get_setting("amazon_marketplace", "SA")
+    seen_asins = seen_asins or {}
 
     results = {}
 
@@ -436,7 +436,6 @@ async def discover_deals(category_ids: list[str]) -> dict:
         logger.info(f"جاري البحث في تصنيف: {category['name_ar']}")
         all_products = []
 
-        # نبحث بكل keyword مع تشغيل متوازي
         tasks = [
             _rapidapi_search(kw, marketplace, api_key)
             for kw in category["keywords"]
@@ -447,8 +446,7 @@ async def discover_deals(category_ids: list[str]) -> dict:
             if isinstance(result, list):
                 all_products.extend(result)
 
-        # fallback للأكثر مبيعاً إذا كانت النتائج قليلة
-        if len(all_products) < 5:
+        if len(all_products) < 7:
             logger.info(f"نتائج قليلة لـ '{category['name_ar']}' — جرّب bestsellers كـ fallback")
             bestsellers = await _rapidapi_bestsellers(cat_id, marketplace, api_key)
             all_products.extend(bestsellers)
@@ -458,22 +456,34 @@ async def discover_deals(category_ids: list[str]) -> dict:
             results[cat_id] = []
             return
 
+        # استبعاد المنتجات التي سبق عرضها
+        excluded = set(seen_asins.get(cat_id, []))
+        if excluded:
+            before = len(all_products)
+            all_products = [p for p in all_products if p["asin"] not in excluded]
+            logger.info(f"استبعدنا {before - len(all_products)} منتج سبق عرضه في '{category['name_ar']}'")
+
+        if not all_products:
+            # إذا استُنفذت المنتجات، ارجع بدون استبعاد
+            logger.info(f"استُنفذت المنتجات الجديدة في '{category['name_ar']}' — نعيد كل المنتجات")
+            tasks2 = [_rapidapi_search(kw, marketplace, api_key) for kw in category["keywords"]]
+            r2 = await asyncio.gather(*tasks2, return_exceptions=True)
+            all_products = [p for res in r2 if isinstance(res, list) for p in res]
+
         # ترتيب وإزالة التكرار
         unique_sorted = _sort_and_deduplicate(all_products)
 
-        # AI يختار أفضل 5
-        top5 = await _ai_select_top5(unique_sorted, category["name_ar"])
+        # AI يختار أفضل 7
+        top7 = await _ai_select_top7(unique_sorted, category["name_ar"])
 
-        # إضافة معلومات التصنيف
-        for p in top5:
+        for p in top7:
             p["category_id"] = cat_id
             p["category_name"] = category["name_ar"]
             p["category_icon"] = category["icon"]
 
-        results[cat_id] = top5
-        logger.info(f"تصنيف '{category['name_ar']}': {len(top5)} منتج")
+        results[cat_id] = top7
+        logger.info(f"تصنيف '{category['name_ar']}': {len(top7)} منتج")
 
-    # معالجة متوازية لكل التصنيفات (بحد أقصى 3 متزامنة)
     semaphore = asyncio.Semaphore(3)
 
     async def process_with_semaphore(cat_id):
