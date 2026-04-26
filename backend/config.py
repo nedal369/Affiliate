@@ -247,16 +247,17 @@ DEFAULT_SETTINGS = {
     "enable_x": False,
     "attach_image": True,
     "manual_approval": True,
-    "primary_llm": "",
+    "primary_llm": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
     "llm_fallback": True,
     "llm_priority": [
-        "openrouter/google/gemini-2.0-flash-exp:free",
         "openrouter/meta-llama/llama-3.3-70b-instruct:free",
         "openrouter/qwen/qwen-2.5-72b-instruct:free",
+        "openrouter/mistralai/mistral-7b-instruct:free",
         "openrouter/meta-llama/llama-3.3-70b-instruct",
         "llama-3.3-70b-versatile",
-        "gemini-1.5-flash",
+        "openrouter/google/gemini-2.0-flash-exp:free",
         "gpt-4o-mini",
+        "gemini-1.5-flash",
         "claude-haiku-4-5",
     ],
     "amazon_marketplace": "SA",
@@ -274,12 +275,26 @@ DEFAULT_SETTINGS = {
 }
 
 
+_OLD_GEMINI_FIRST_PRIORITY = "openrouter/google/gemini-2.0-flash-exp:free"
+
+
 def init_default_settings():
-    """ابدأ بالإعدادات الافتراضية إذا لم تكن موجودة"""
+    """ابدأ بالإعدادات الافتراضية إذا لم تكن موجودة، وحدّث الإعدادات التي تغيّرت جوهرياً."""
     for key, value in DEFAULT_SETTINGS.items():
         existing = get_setting(key)
         if existing is None:
             set_setting(key, value)
+
+    # إذا كانت قائمة الأولوية القديمة تبدأ بجيميني، استبدلها بالقائمة الجديدة التي تُقدّم OpenRouter أولاً
+    current_priority = get_setting("llm_priority", [])
+    if isinstance(current_priority, list) and current_priority and current_priority[0] == _OLD_GEMINI_FIRST_PRIORITY:
+        set_setting("llm_priority", DEFAULT_SETTINGS["llm_priority"])
+        logger.info("تم تحديث قائمة أولوية النماذج: OpenRouter/Llama أولاً بدلاً من Gemini")
+
+    # إذا كان primary_llm فارغاً (القديم)، اضبطه على الافتراضي الجديد
+    if not get_setting("primary_llm", ""):
+        set_setting("primary_llm", DEFAULT_SETTINGS["primary_llm"])
+        logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
 
 
 # ── إنشاء الجداول ─────────────────────────────────────────────────────────────
