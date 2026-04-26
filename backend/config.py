@@ -5,7 +5,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from sqlalchemy import create_engine, Column, String, Text, DateTime
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
@@ -116,39 +116,62 @@ def get_fernet() -> Fernet:
     return _fernet
 
 
+# ── Settings Cache — يُقلل استعلامات DB من عشرات إلى صفر لكل طلب ─────────────
+# يُبطل عند كل set_setting()، ويُعاد بناؤه عند أول get_setting()
+_settings_cache: Optional[Dict[str, Any]] = None
+
+
+def _invalidate_settings_cache() -> None:
+    global _settings_cache
+    _settings_cache = None
+
+
+def _load_settings_cache() -> Dict[str, Any]:
+    global _settings_cache
+    cache: Dict[str, Any] = {}
+    with SessionLocal() as db:
+        for row in db.query(Setting).all():
+            try:
+                cache[row.key] = json.loads(row.value)
+            except (json.JSONDecodeError, TypeError):
+                cache[row.key] = row.value
+    _settings_cache = cache
+    return cache
+
+
 # ── دوال الإعدادات ────────────────────────────────────────────────────────────
 def get_setting(key: str, default=None):
-    with SessionLocal() as db:
-        row = db.get(Setting, key)
-        if row is None:
-            return default
-        try:
-            return json.loads(row.value)
-        except (json.JSONDecodeError, TypeError):
-            return row.value
+    cache = _settings_cache
+    if cache is None:
+        cache = _load_settings_cache()
+    return cache.get(key, default)
 
 
 def set_setting(key: str, value):
     with SessionLocal() as db:
         row = db.get(Setting, key)
-        serialized = json.dumps(value) if not isinstance(value, str) else value
+        serialized = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
         if row:
             row.value = serialized
         else:
             db.add(Setting(key=key, value=serialized))
         db.commit()
+    # تحديث الـ cache مباشرةً بدلاً من إبطاله بالكامل
+    if _settings_cache is not None:
+        parsed: Any = value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                parsed = value
+        _settings_cache[key] = parsed
 
 
 def get_all_settings() -> dict:
-    with SessionLocal() as db:
-        rows = db.query(Setting).all()
-        result = {}
-        for row in rows:
-            try:
-                result[row.key] = json.loads(row.value)
-            except (json.JSONDecodeError, TypeError):
-                result[row.key] = row.value
-        return result
+    cache = _settings_cache
+    if cache is None:
+        cache = _load_settings_cache()
+    return dict(cache)
 
 
 # ── خريطة متغيرات البيئة لكل خدمة ───────────────────────────────────────────────
@@ -293,37 +316,86 @@ _FREE_OPENROUTER_MODELS = {
 
 
 def init_default_settings():
-    """ابدأ بالإعدادات الافتراضية إذا لم تكن موجودة، وحدّث الإعدادات التي تغيّرت جوهرياً."""
-    for key, value in DEFAULT_SETTINGS.items():
-        existing = get_setting(key)
-        if existing is None:
-            set_setting(key, value)
+    """يُهيئ الإعدادات الافتراضية ويحدّثها — كل ذلك في transaction واحد (1-2 DB queries)."""
+    with SessionLocal() as db:
+        # ① اقرأ كل الإعدادات الموجودة في استعلام واحد
+        existing_rows = db.query(Setting).all()
+        existing_map: Dict[str, Setting] = {r.key: r for r in existing_rows}
+        existing_vals: Dict[str, str] = {r.key: r.value for r in existing_rows}
 
-    # إذا كانت نسخة القائمة قديمة، أو تحتوي نماذج منتهية، أو تحتوي أي نموذج غير مجاني — استبدلها بالكامل
-    stored_version = get_setting("llm_priority_version", 0)
-    current_priority = get_setting("llm_priority", [])
-    has_non_free_or_deprecated = (
-        isinstance(current_priority, list)
-        and any(
-            m in _DEPRECATED_MODELS or m not in _FREE_OPENROUTER_MODELS
-            for m in current_priority
-        )
-    )
-    if stored_version < _LLM_PRIORITY_VERSION or has_non_free_or_deprecated:
-        set_setting("llm_priority", DEFAULT_SETTINGS["llm_priority"])
-        set_setting("llm_priority_version", _LLM_PRIORITY_VERSION)
-        logger.info(
-            f"تم تحديث قائمة أولوية النماذج إلى الإصدار {_LLM_PRIORITY_VERSION} "
-            f"(نماذج OpenRouter المجانية فقط)"
+        to_insert: list[Setting] = []
+
+        # ② أضف الإعدادات الناقصة دفعةً واحدة
+        for key, value in DEFAULT_SETTINGS.items():
+            if key not in existing_map:
+                serialized = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+                to_insert.append(Setting(key=key, value=serialized))
+
+        # ③ تحقق من إصدار قائمة الأولوية
+        stored_version = 0
+        try:
+            stored_version = int(json.loads(existing_vals.get("llm_priority_version", "0") or "0"))
+        except Exception:
+            pass
+
+        current_priority: list = []
+        try:
+            raw = existing_vals.get("llm_priority")
+            if raw:
+                current_priority = json.loads(raw)
+        except Exception:
+            pass
+
+        needs_priority_update = stored_version < _LLM_PRIORITY_VERSION or (
+            isinstance(current_priority, list)
+            and any(m in _DEPRECATED_MODELS or m not in _FREE_OPENROUTER_MODELS for m in current_priority)
         )
 
-    # primary_llm يجب أن يكون من النماذج المجانية فقط
-    current_primary = get_setting("primary_llm", "")
-    if (not current_primary
-            or current_primary in _DEPRECATED_MODELS
-            or current_primary not in _FREE_OPENROUTER_MODELS):
-        set_setting("primary_llm", DEFAULT_SETTINGS["primary_llm"])
-        logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
+        if needs_priority_update:
+            new_priority_val = json.dumps(DEFAULT_SETTINGS["llm_priority"], ensure_ascii=False)
+            new_version_val = str(_LLM_PRIORITY_VERSION)
+            _upsert_in_batch(db, existing_map, to_insert, "llm_priority", new_priority_val)
+            _upsert_in_batch(db, existing_map, to_insert, "llm_priority_version", new_version_val)
+            logger.info(f"تم تحديث قائمة أولوية النماذج إلى الإصدار {_LLM_PRIORITY_VERSION}")
+
+        # ④ تحقق من النموذج الأساسي
+        current_primary = ""
+        try:
+            raw = existing_vals.get("primary_llm", "")
+            current_primary = json.loads(raw) if raw else ""
+        except Exception:
+            current_primary = existing_vals.get("primary_llm", "")
+
+        if not current_primary or current_primary in _DEPRECATED_MODELS or current_primary not in _FREE_OPENROUTER_MODELS:
+            new_primary_val = json.dumps(DEFAULT_SETTINGS["primary_llm"])
+            _upsert_in_batch(db, existing_map, to_insert, "primary_llm", new_primary_val)
+            logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
+
+        if to_insert:
+            db.add_all(to_insert)
+        db.commit()
+
+    # ⑤ أبطل الـ cache بعد التهيئة ليُعاد بناؤه بالقيم الصحيحة
+    _invalidate_settings_cache()
+
+
+def _upsert_in_batch(
+    db,
+    existing_map: Dict[str, Setting],
+    to_insert: list,
+    key: str,
+    value: str,
+) -> None:
+    """يعدّل الصف الموجود أو يحذف المسودة من to_insert ويضيف نسخة محدّثة."""
+    if key in existing_map:
+        existing_map[key].value = value
+    else:
+        # استبدل أي إدخال مسبق في to_insert بالقيمة الجديدة
+        for i, s in enumerate(to_insert):
+            if s.key == key:
+                to_insert[i] = Setting(key=key, value=value)
+                return
+        to_insert.append(Setting(key=key, value=value))
 
 
 # ── إنشاء الجداول ─────────────────────────────────────────────────────────────

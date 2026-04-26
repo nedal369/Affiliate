@@ -810,17 +810,14 @@ async def save_settings(request: Request, body: dict = Body(...)):
         changed.append(key)
 
     if changed:
-        try:
-            from backend.services.audit_log import log_action
-            log_action(
-                user_id=user.get("id"),
-                action="settings.update",
-                resource="settings",
-                detail={"keys": changed},
-                ip_address=_client_ip(request),
-            )
-        except Exception:
-            pass  # audit log اختياري — لا يُفشل الـ request
+        from backend.services.audit_log import log_action_bg
+        asyncio.create_task(log_action_bg(
+            user_id=user.get("id"),
+            action="settings.update",
+            resource="settings",
+            detail={"keys": changed},
+            ip_address=_client_ip(request),
+        ))
 
     refresh_schedule()
     return {"success": True, "updated": changed}

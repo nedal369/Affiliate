@@ -28,9 +28,9 @@ _ALLOWED_HOST_PATTERN = re.compile(
 )
 
 
-def _validate_safe_url(url: str) -> None:
-    """يتحقق من URL لمنع SSRF: schema, hostname, IP داخلية، وأن النطاق مسموح به.
-    يرفع ValueError إذا كان الرابط غير آمن.
+def _check_url_fast(url: str) -> str:
+    """تحقق سريع بدون DNS: بروتوكول، hostname، IP literals، وقائمة النطاقات.
+    يرجع hostname عند النجاح، أو يرفع ValueError.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -45,23 +45,31 @@ def _validate_safe_url(url: str) -> None:
         addr = ipaddress.ip_address(hostname)
         if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
             raise ValueError(f"IP داخلي/محجوز غير مسموح: {hostname}")
-        # IPs العامة المباشرة ليست في قائمتنا — نرفضها
         raise ValueError(f"الوصول المباشر لـ IP غير مسموح: {hostname}")
     except ValueError as exc:
-        # إذا كانت رسالة الخطأ من ipaddress (يعني hostname ليس IP) — تابع للتحقق من النطاق
         if "is not a valid IPAddress" in str(exc) or "does not appear" in str(exc):
             pass
         elif hostname not in str(exc):
-            # خطأ مختلف نُعيد رفعه
             raise
 
     # ② تحقق من النطاق
     if not _ALLOWED_HOST_PATTERN.search(hostname.lower()):
         raise ValueError(f"النطاق غير مسموح: {hostname} — فقط نطاقات أمازون مدعومة")
 
-    # ③ resolve الـ hostname للتحقق أنه لا يشير لـ IP داخلي (defense-in-depth)
+    return hostname
+
+
+async def _validate_safe_url(url: str) -> None:
+    """SSRF check كامل: بروتوكول + hostname + IP literals + قائمة النطاقات + DNS async.
+    يرفع ValueError إذا كان الرابط غير آمن.
+    """
+    hostname = _check_url_fast(url)
+
+    # ③ DNS async — لا يحجب الـ event loop (socket.getaddrinfo يحجب Thread)
     try:
-        resolved_ips = {info[4][0] for info in socket.getaddrinfo(hostname, None)}
+        resolved_ips = await asyncio.to_thread(
+            lambda: {info[4][0] for info in socket.getaddrinfo(hostname, None)}
+        )
         for ip_str in resolved_ips:
             try:
                 ip_obj = ipaddress.ip_address(ip_str)
@@ -71,7 +79,6 @@ def _validate_safe_url(url: str) -> None:
                 if "is not a valid" not in str(exc):
                     raise
     except (socket.gaierror, OSError):
-        # فشل DNS — سنعتمد على فشل الجلب لاحقاً
         pass
 
 _HEADERS = {
@@ -191,24 +198,19 @@ async def _fetch_via_paapi(asin: str) -> Optional[dict]:
 
 # ── جلب HTML الصفحة ──────────────────────────────────────────────────────────────
 async def _fetch_html(url: str) -> Optional[str]:
-    # SSRF Protection — رفض روابط خارج النطاقات المسموحة
-    try:
-        _validate_safe_url(url)
-    except ValueError as exc:
-        logger.warning(f"رفض رابط غير آمن: {exc}")
-        return None
-
+    # الـ caller (fetch_product_data) تحقق بالفعل من الرابط الأصلي
     try:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(headers=_HEADERS) as session:
             async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
-                # ① تحقق أن الـ redirect لم يخرج عن النطاقات المسموحة
                 final_url = str(resp.url)
-                try:
-                    _validate_safe_url(final_url)
-                except ValueError as exc:
-                    logger.warning(f"redirect إلى نطاق غير مسموح: {exc}")
-                    return None
+                # تحقق من redirect فقط إذا كان الـ URL تغيّر
+                if final_url.rstrip("/") != url.rstrip("/"):
+                    try:
+                        await _validate_safe_url(final_url)
+                    except ValueError as exc:
+                        logger.warning(f"redirect إلى نطاق غير مسموح: {exc}")
+                        return None
                 if resp.status != 200:
                     logger.warning(f"جلب الصفحة: HTTP {resp.status} — {url}")
                     return None
@@ -379,8 +381,8 @@ async def fetch_product_data(url: str) -> dict:
         title, price_current, price_original, discount_pct,
         rating, rating_count, image_url, amazon_asin
     """
-    # SSRF Protection — يرفع ValueError إذا كان الرابط غير آمن
-    _validate_safe_url(url)
+    # SSRF Protection — async لعدم حجب الـ event loop أثناء DNS
+    await _validate_safe_url(url)
 
     data: dict = {
         "title":          None,

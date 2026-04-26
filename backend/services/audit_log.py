@@ -2,6 +2,7 @@
 audit_log.py — تسجيل العمليات الحساسة
 يستدعى من endpoints تغيير الإعدادات، المفاتيح، الموافقة/رفض المنتجات، إلخ.
 """
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -37,6 +38,18 @@ def log_action(
             db.commit()
     except Exception as exc:
         logger.warning(f"فشل تسجيل audit log [{action}]: {exc}")
+
+
+async def log_action_bg(
+    user_id: Optional[int],
+    action: str,
+    resource: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    detail: Optional[dict] = None,
+    ip_address: Optional[str] = None,
+) -> None:
+    """نسخة async لا تحجب الـ event loop — استخدم asyncio.create_task(log_action_bg(...))."""
+    await asyncio.to_thread(log_action, user_id, action, resource, resource_id, detail, ip_address)
 
 
 def get_recent_logs(
