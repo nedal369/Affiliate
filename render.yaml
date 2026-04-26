@@ -27,6 +27,11 @@ services:
       - key: ENVIRONMENT
         value: production
 
+      # ── الأمن: قائمة origins المسموح لها بالوصول للـ API ─────────────────────
+      # ضع نطاق موقعك الفعلي بعد النشر، مثل: https://YOUR-APP.onrender.com
+      - key: ALLOWED_ORIGINS
+        sync: false                  # اضبطه يدوياً بعد أول نشر
+
       # ── قاعدة البيانات — يربط تلقائياً بقاعدة Postgres أعلاه ────────────────
       # هذا هو الفرق الجوهري: البيانات تبقى عبر كل التحديثات والإعادة تشغيل
       - key: DATABASE_URL

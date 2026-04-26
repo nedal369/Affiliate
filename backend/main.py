@@ -3,6 +3,8 @@ main.py — FastAPI Application — نقطة الدخول الرئيسية
 """
 import logging
 import asyncio
+import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -23,6 +25,15 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
+# ── إعدادات بيئة التشغيل ────────────────────────────────────────────────────────
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "").lower() == "production"
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",") if o.strip()
+]
+
 
 # ── Startup / Shutdown ────────────────────────────────────────────────────────────
 async def _ensure_default_admin():
@@ -40,7 +51,7 @@ async def lifespan(app: FastAPI):
     from backend.scheduler import setup_scheduler
     init_db()          # سريع: إنشاء الجداول والإعدادات فقط، بدون bcrypt
     setup_scheduler()
-    logger.info("✅ النظام جاهز")
+    logger.info(f"✅ النظام جاهز — البيئة: {'production' if IS_PRODUCTION else 'development'}")
     asyncio.create_task(_ensure_default_admin())  # bcrypt في الخلفية بعد bind المنفذ
     yield
     from backend.scheduler import stop_scheduler
@@ -49,13 +60,42 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Affiliate Automation System", lifespan=lifespan)
 
+# ── Rate Limiting (slowapi) ───────────────────────────────────────────────────
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_remote_address, default_limits=["1000/hour"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    _RATE_LIMITER_AVAILABLE = True
+except ImportError:
+    logger.warning("slowapi غير مثبّت — تخطّي rate limiting")
+    _RATE_LIMITER_AVAILABLE = False
+    limiter = None
+
+# ── CORS — مقيّد على origins محددة ──────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+
+# ── Security Headers Middleware ─────────────────────────────────────────────
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 
 # ── Static files ──────────────────────────────────────────────────────────────────
 if FRONTEND_DIR.exists():
@@ -64,8 +104,16 @@ if FRONTEND_DIR.exists():
 
 # ── Auth Middleware ───────────────────────────────────────────────────────────────
 # المسارات العامة التي لا تحتاج تسجيل دخول
-_PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/health"}
+_PUBLIC_PATHS = {
+    "/login", "/register",
+    "/api/auth/login", "/api/auth/register",
+    "/api/health",
+}
 _PUBLIC_PREFIXES = ("/static/",)
+
+# Token cache — يقلل DB queries في كل طلب
+_token_cache: dict[str, tuple[dict, float]] = {}
+_TOKEN_CACHE_TTL = 300  # 5 دقائق
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -82,15 +130,32 @@ async def auth_middleware(request: Request, call_next):
             return JSONResponse({"detail": "غير مصادق عليه"}, status_code=401)
         return RedirectResponse(url="/login", status_code=302)
 
+    # ① تحقق من الـ cache أولاً (يوفّر DB query)
+    now = time.time()
+    cached = _token_cache.get(token)
+    if cached and now < cached[1]:
+        request.state.user = cached[0]
+        return await call_next(request)
+
+    # ② تحقق فعلي من DB
     from backend.services.auth_service import get_user_from_token
     user = get_user_from_token(token)
     if not user:
+        _token_cache.pop(token, None)
         if path.startswith("/api/"):
             resp = JSONResponse({"detail": "جلسة منتهية — سجّل دخولك مجدداً"}, status_code=401)
         else:
             resp = RedirectResponse(url="/login", status_code=302)
         resp.delete_cookie("access_token")
         return resp
+
+    # ③ خزّن في الـ cache + تنظيف دوري
+    _token_cache[token] = (user, now + _TOKEN_CACHE_TTL)
+    if len(_token_cache) > 500:
+        # حذف المنتهي صلاحيته
+        expired = [t for t, (_, exp) in _token_cache.items() if exp < now]
+        for t in expired:
+            _token_cache.pop(t, None)
 
     # أضف بيانات المستخدم للـ request state
     request.state.user = user
@@ -107,6 +172,13 @@ def _require_admin(request: Request) -> dict:
         raise HTTPException(403, "صلاحيات المدير مطلوبة")
     return user
 
+def _client_ip(request: Request) -> str:
+    """استخراج IP المستخدم — يحترم X-Forwarded-For خلف proxy"""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 
 # ── صفحة تسجيل الدخول (مسار عام) ─────────────────────────────────────────────
 @app.get("/login")
@@ -115,6 +187,15 @@ async def login_page():
     if login_html.exists():
         return FileResponse(str(login_html))
     return JSONResponse({"error": "login.html غير موجود"}, status_code=404)
+
+
+# ── صفحة التسجيل (مسار عام، اختياري — للنشر مع لوحة الأدمن المركزية) ──────
+@app.get("/register")
+async def register_page():
+    register_html = FRONTEND_DIR / "register.html"
+    if register_html.exists():
+        return FileResponse(str(register_html))
+    return JSONResponse({"error": "register.html غير موجود"}, status_code=404)
 
 
 # ── الصفحة الرئيسية (محمية) ───────────────────────────────────────────────────
@@ -134,8 +215,15 @@ class LoginBody(BaseModel):
     username: str
     password: str
 
+def _login_rate_limit(func):
+    """Decorator يطبّق rate limit إذا كان slowapi متوفر، وإلا يمرّر الدالة كما هي"""
+    if _RATE_LIMITER_AVAILABLE:
+        return limiter.limit("5/minute")(func)
+    return func
+
 @app.post("/api/auth/login")
-async def login(body: LoginBody, response: Response):
+@_login_rate_limit
+async def login(request: Request, body: LoginBody, response: Response):
     from backend.services.auth_service import authenticate_user, create_access_token
     user = authenticate_user(body.username.strip(), body.password)
     if not user:
@@ -146,17 +234,110 @@ async def login(body: LoginBody, response: Response):
         key="access_token",
         value=token,
         httponly=True,
-        samesite="lax",
+        samesite="strict" if IS_PRODUCTION else "lax",
         max_age=60 * 60 * 24 * 7,   # 7 أيام
-        secure=False,                 # True في الإنتاج مع HTTPS
+        secure=IS_PRODUCTION,        # True فقط في الإنتاج (HTTPS)
     )
     return {"success": True, "user": user}
 
 
 @app.post("/api/auth/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    # إبطال الـ token من الـ cache
+    token = request.cookies.get("access_token")
+    if token:
+        _token_cache.pop(token, None)
     response.delete_cookie("access_token")
     return {"success": True}
+
+
+# ── تسجيل ذاتي (للـ SaaS — إن فُعّل) ─────────────────────────────────────
+class RegisterBody(BaseModel):
+    name: str
+    email: str
+    password: str
+    plan: str = "free"
+
+
+@app.post("/api/auth/register")
+@_login_rate_limit  # نفس rate limit الـ login لمنع spam
+async def register(request: Request, body: RegisterBody):
+    """تسجيل ذاتي — يُسجّل العميل في master DB ويُطلق provisioning في الخلفية.
+    يعمل فقط إذا كان MASTER_DATABASE_URL مضبوطاً (وضع SaaS).
+    """
+    if not os.getenv("MASTER_DATABASE_URL"):
+        raise HTTPException(503, "التسجيل الذاتي غير مفعّل في هذه instance")
+
+    # تحقق أساسي
+    name = (body.name or "").strip()
+    email = (body.email or "").strip().lower()
+    password = body.password or ""
+    if len(name) < 2:
+        raise HTTPException(400, "الاسم قصير جداً")
+    if "@" not in email or len(email) > 255:
+        raise HTTPException(400, "البريد الإلكتروني غير صالح")
+    if len(password) < 8:
+        raise HTTPException(400, "كلمة المرور يجب أن تكون 8 أحرف على الأقل")
+
+    try:
+        from admin_panel.models import (
+            Client, MasterSession, init_master_db, SUBSCRIPTION_PLANS,
+        )
+        from passlib.context import CryptContext
+    except ImportError:
+        raise HTTPException(503, "نظام إدارة العملاء غير مثبّت")
+
+    if body.plan not in SUBSCRIPTION_PLANS:
+        raise HTTPException(400, f"خطة غير صالحة: {body.plan}")
+
+    init_master_db()
+    ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    pw_hash = ctx.hash(password)
+
+    with MasterSession() as db:
+        existing = db.query(Client).filter(Client.email == email).first()
+        if existing:
+            raise HTTPException(409, "البريد الإلكتروني مسجّل مسبقاً")
+
+        client = Client(
+            name=name,
+            email=email,
+            password_hash=pw_hash,
+            plan=body.plan,
+            status="pending",   # سيصبح active بعد اكتمال provisioning
+            monthly_fee=SUBSCRIPTION_PLANS[body.plan]["price_usd"],
+        )
+        db.add(client)
+        db.commit()
+        db.refresh(client)
+        client_id = client.id
+
+    # إطلاق provisioning في الخلفية (لا ننتظره)
+    asyncio.create_task(_provision_client_async(name, email, body.plan))
+
+    logger.info(f"تسجيل عميل جديد #{client_id}: {email} (plan={body.plan})")
+    return {"success": True, "client_id": client_id}
+
+
+async def _provision_client_async(name: str, email: str, plan: str):
+    """يُشغّل سكريبت إنشاء instance على Render في الخلفية."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python", "scripts/create_client.py",
+            "--client-name", name,
+            "--email", email,
+            "--plan", plan,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(BASE_DIR),
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            logger.info(f"✓ provisioning نجح لـ {email}")
+        else:
+            logger.error(f"provisioning فشل لـ {email}: {stderr.decode(errors='replace')[:500]}")
+    except Exception as exc:
+        logger.error(f"خطأ في provisioning لـ {email}: {exc}")
 
 
 @app.get("/api/auth/me")
@@ -329,17 +510,30 @@ async def get_stats():
 
 # ── قائمة الانتظار ────────────────────────────────────────────────────────────────
 @app.get("/api/queue")
-async def get_queue():
+async def get_queue(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+):
+    """قائمة المنتجات في الانتظار مع pagination.
+    للحفاظ على التوافق مع الواجهة القديمة، إذا لم تُمرَّر page نُرجع كل المنتجات (max 200).
+    """
     from backend.config import SessionLocal
     from backend.models import Product
     with SessionLocal() as db:
-        products = (
-            db.query(Product)
-            .filter(Product.status == "pending")
-            .order_by(Product.created_at.desc())
-            .all()
+        q = db.query(Product).filter(Product.status == "pending")
+        total = q.count()
+        items = (
+            q.order_by(Product.created_at.desc())
+             .offset((page - 1) * per_page)
+             .limit(per_page)
+             .all()
         )
-        return [_product_to_dict(p) for p in products]
+        return {
+            "total":    total,
+            "page":     page,
+            "per_page": per_page,
+            "items":    [_product_to_dict(p) for p in items],
+        }
 
 
 @app.post("/api/queue/{product_id}/approve")
@@ -560,18 +754,26 @@ async def get_history(
 ):
     from backend.config import SessionLocal
     from backend.models import Product, PublishLog
-    import sqlalchemy as sa
+    from sqlalchemy.orm import subqueryload
 
     with SessionLocal() as db:
         q = db.query(Product).filter(Product.status.in_(["published", "failed", "rejected"]))
         if status:
             q = q.filter(Product.status == status)
         total = q.count()
-        products = q.order_by(Product.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+        # تحميل publish_logs دفعة واحدة بدلاً من N+1 query
+        products = (
+            q.options(subqueryload(Product.publish_logs))
+             .order_by(Product.created_at.desc())
+             .offset((page - 1) * per_page)
+             .limit(per_page)
+             .all()
+        )
 
         result = []
         for p in products:
-            logs = db.query(PublishLog).filter(PublishLog.product_id == p.id).all()
+            logs = p.publish_logs  # محمّلة مسبقاً — لا DB query
             channels_info = {l.channel: {"success": l.success, "clicks": l.clicks} for l in logs}
             total_clicks = sum(l.clicks for l in logs)
             d = _product_to_dict(p)
@@ -590,13 +792,38 @@ async def get_settings_api():
 
 
 @app.post("/api/settings")
-async def save_settings(body: dict = Body(...)):
-    from backend.config import set_setting
+async def save_settings(request: Request, body: dict = Body(...)):
+    from backend.config import set_setting, DEFAULT_SETTINGS
     from backend.scheduler import refresh_schedule
+
+    # ① whitelist — فقط المفاتيح المعروفة في DEFAULT_SETTINGS
+    valid_keys = set(DEFAULT_SETTINGS.keys())
+    invalid = set(body.keys()) - valid_keys
+    if invalid:
+        raise HTTPException(400, f"مفاتيح إعدادات غير معروفة: {sorted(invalid)}")
+
+    # ② حفظ + audit log
+    user = _get_user(request)
+    changed = []
     for key, value in body.items():
         set_setting(key, value)
+        changed.append(key)
+
+    if changed:
+        try:
+            from backend.services.audit_log import log_action
+            log_action(
+                user_id=user.get("id"),
+                action="settings.update",
+                resource="settings",
+                detail={"keys": changed},
+                ip_address=_client_ip(request),
+            )
+        except Exception:
+            pass  # audit log اختياري — لا يُفشل الـ request
+
     refresh_schedule()
-    return {"success": True}
+    return {"success": True, "updated": changed}
 
 
 # ── مفاتيح API ──────────────────────────────────────────────────────────────────
@@ -760,6 +987,18 @@ async def ai_diagnostics():
     return await diagnose_ai()
 
 
+# ── سجل التدقيق (admin only) ─────────────────────────────────────────────────
+@app.get("/api/audit-logs")
+async def get_audit_logs(
+    request: Request,
+    limit: int = Query(100, ge=1, le=500),
+    action_prefix: Optional[str] = None,
+):
+    _require_admin(request)
+    from backend.services.audit_log import get_recent_logs
+    return {"logs": get_recent_logs(limit=limit, action_prefix=action_prefix)}
+
+
 # ── إضافة رابط إحالة يدوي (جلب تلقائي للبيانات) ────────────────────────────────
 class ManualLinkBody(BaseModel):
     url: str
@@ -777,11 +1016,17 @@ async def add_manual_link(body: ManualLinkBody):
     if not url:
         raise HTTPException(400, "الرابط مطلوب")
 
+    if len(url) > 2048:
+        raise HTTPException(400, "الرابط طويل جداً (الحد 2048 حرف)")
+
     # ① بناء رابط الإحالة (يُضيف tag= تلقائياً إذا لم يكن موجوداً)
     affiliate_url = resolve_affiliate_url(url)
 
-    # ② جلب بيانات المنتج من الصفحة
-    fetched = await fetch_product_data(url)
+    # ② جلب بيانات المنتج من الصفحة (مع SSRF protection)
+    try:
+        fetched = await fetch_product_data(url)
+    except ValueError as exc:
+        raise HTTPException(400, f"رابط غير مدعوم: {exc}")
 
     title = fetched.get("title") or "منتج من رابط إحالة"
 

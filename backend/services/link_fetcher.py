@@ -10,13 +10,69 @@ link_fetcher.py — جلب بيانات المنتج تلقائياً من را�
 import re
 import json
 import asyncio
+import ipaddress
 import logging
+import socket
 from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+# ── SSRF Protection ──────────────────────────────────────────────────────────
+# نطاقات أمازون المسموح بها فقط
+_ALLOWED_HOST_PATTERN = re.compile(
+    r"(?:^|\.)(amazon\.(?:sa|ae|com|co\.uk|de|fr|com\.au|com\.tr|in|it|es|nl|pl|se)|amzn\.to|a\.co)$",
+    re.IGNORECASE,
+)
+
+
+def _validate_safe_url(url: str) -> None:
+    """يتحقق من URL لمنع SSRF: schema, hostname, IP داخلية، وأن النطاق مسموح به.
+    يرفع ValueError إذا كان الرابط غير آمن.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"بروتوكول غير مسموح: {parsed.scheme!r}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("hostname مفقود في الرابط")
+
+    # ① إذا كان hostname هو IP صريح، تأكد أنه ليس داخلياً
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            raise ValueError(f"IP داخلي/محجوز غير مسموح: {hostname}")
+        # IPs العامة المباشرة ليست في قائمتنا — نرفضها
+        raise ValueError(f"الوصول المباشر لـ IP غير مسموح: {hostname}")
+    except ValueError as exc:
+        # إذا كانت رسالة الخطأ من ipaddress (يعني hostname ليس IP) — تابع للتحقق من النطاق
+        if "is not a valid IPAddress" in str(exc) or "does not appear" in str(exc):
+            pass
+        elif hostname not in str(exc):
+            # خطأ مختلف نُعيد رفعه
+            raise
+
+    # ② تحقق من النطاق
+    if not _ALLOWED_HOST_PATTERN.search(hostname.lower()):
+        raise ValueError(f"النطاق غير مسموح: {hostname} — فقط نطاقات أمازون مدعومة")
+
+    # ③ resolve الـ hostname للتحقق أنه لا يشير لـ IP داخلي (defense-in-depth)
+    try:
+        resolved_ips = {info[4][0] for info in socket.getaddrinfo(hostname, None)}
+        for ip_str in resolved_ips:
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                    raise ValueError(f"النطاق {hostname} يشير لـ IP داخلي: {ip_str}")
+            except ValueError as exc:
+                if "is not a valid" not in str(exc):
+                    raise
+    except (socket.gaierror, OSError):
+        # فشل DNS — سنعتمد على فشل الجلب لاحقاً
+        pass
 
 _HEADERS = {
     "User-Agent": (
@@ -135,10 +191,24 @@ async def _fetch_via_paapi(asin: str) -> Optional[dict]:
 
 # ── جلب HTML الصفحة ──────────────────────────────────────────────────────────────
 async def _fetch_html(url: str) -> Optional[str]:
+    # SSRF Protection — رفض روابط خارج النطاقات المسموحة
+    try:
+        _validate_safe_url(url)
+    except ValueError as exc:
+        logger.warning(f"رفض رابط غير آمن: {exc}")
+        return None
+
     try:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(headers=_HEADERS) as session:
             async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
+                # ① تحقق أن الـ redirect لم يخرج عن النطاقات المسموحة
+                final_url = str(resp.url)
+                try:
+                    _validate_safe_url(final_url)
+                except ValueError as exc:
+                    logger.warning(f"redirect إلى نطاق غير مسموح: {exc}")
+                    return None
                 if resp.status != 200:
                     logger.warning(f"جلب الصفحة: HTTP {resp.status} — {url}")
                     return None
@@ -309,6 +379,9 @@ async def fetch_product_data(url: str) -> dict:
         title, price_current, price_original, discount_pct,
         rating, rating_count, image_url, amazon_asin
     """
+    # SSRF Protection — يرفع ValueError إذا كان الرابط غير آمن
+    _validate_safe_url(url)
+
     data: dict = {
         "title":          None,
         "price_current":  0.0,

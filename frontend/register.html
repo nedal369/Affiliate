@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>إنشاء حساب — منصة الأتمتة</title>
+  <style>
+    :root {
+      --primary: #0071e3;
+      --primary-hover: #0062c4;
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --border: #d2d2d7;
+      --danger: #ff3b30;
+      --success: #34c759;
+      --radius: 12px;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Plus Jakarta Sans", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px 32px;
+      width: 100%;
+      max-width: 480px;
+    }
+    .header { text-align: center; margin-bottom: 32px; }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .form-control {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: border 0.2s;
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .plan-card {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+    }
+    .plan-card.selected {
+      border-color: var(--primary);
+      background: rgba(0, 113, 227, 0.06);
+    }
+    .plan-name { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+    .plan-price { color: var(--text-secondary); font-size: 11px; }
+    .btn-primary {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .footer a { color: var(--primary); text-decoration: none; }
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      display: none;
+    }
+    .alert.error { background: rgba(255, 59, 48, 0.1); color: var(--danger); }
+    .alert.success { background: rgba(52, 199, 89, 0.1); color: #1f6e33; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">🚀</div>
+      <h1>أنشئ حسابك</h1>
+      <p class="subtitle">احصل على instance خاصة بك خلال دقائق</p>
+    </div>
+
+    <div class="alert error" id="alert-error"></div>
+    <div class="alert success" id="alert-success"></div>
+
+    <form id="register-form" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label class="form-label" for="name">الاسم الكامل</label>
+        <input class="form-control" type="text" id="name" required minlength="2" maxlength="100" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">البريد الإلكتروني</label>
+        <input class="form-control" type="email" id="email" required maxlength="255" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">كلمة المرور</label>
+        <input class="form-control" type="password" id="password" required minlength="8" maxlength="128" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">اختر خطّتك</label>
+        <div class="plans" id="plans">
+          <div class="plan-card selected" data-plan="free">
+            <div class="plan-name">مجاني</div>
+            <div class="plan-price">$0/شهر</div>
+          </div>
+          <div class="plan-card" data-plan="pro">
+            <div class="plan-name">احترافي</div>
+            <div class="plan-price">$49/شهر</div>
+          </div>
+          <div class="plan-card" data-plan="enterprise">
+            <div class="plan-name">مؤسسات</div>
+            <div class="plan-price">$149/شهر</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary" type="submit" id="submit-btn">إنشاء الحساب</button>
+    </form>
+
+    <div class="footer">
+      لديك حساب؟ <a href="/login">سجّل دخولك</a>
+    </div>
+  </div>
+
+  <script>
+    let selectedPlan = "free";
+
+    document.querySelectorAll(".plan-card").forEach(card => {
+      card.addEventListener("click", () => {
+        document.querySelectorAll(".plan-card").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+        selectedPlan = card.dataset.plan;
+      });
+    });
+
+    function showAlert(type, message) {
+      const errEl = document.getElementById("alert-error");
+      const okEl = document.getElementById("alert-success");
+      errEl.style.display = "none";
+      okEl.style.display = "none";
+      const el = type === "error" ? errEl : okEl;
+      el.textContent = message;
+      el.style.display = "block";
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      btn.textContent = "جاري الإنشاء...";
+
+      const payload = {
+        name: document.getElementById("name").value.trim(),
+        email: document.getElementById("email").value.trim().toLowerCase(),
+        password: document.getElementById("password").value,
+        plan: selectedPlan,
+      };
+
+      try {
+        const r = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (r.ok && data.success) {
+          showAlert("success", "✓ تم إنشاء الحساب! جاري تجهيز instance خاصة بك. ستتلقى رابط الوصول على بريدك خلال 5-10 دقائق.");
+          document.getElementById("register-form").reset();
+        } else {
+          showAlert("error", data.detail || "تعذّر إنشاء الحساب");
+        }
+      } catch (err) {
+        showAlert("error", "خطأ في الاتصال — حاول مجدداً");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "إنشاء الحساب";
+      }
+    }
+  </script>
+</body>
+</html>

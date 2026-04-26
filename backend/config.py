@@ -46,6 +46,8 @@ if _DB_URL_ENV:
             DATABASE_URL,
             pool_pre_ping=True,
             pool_recycle=300,
+            pool_size=10,        # كان افتراضياً 5
+            max_overflow=20,     # إجمالي 30 اتصال متاح
             echo=False,
         )
     _db_label = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL
@@ -377,15 +379,15 @@ def _seed_default_categories():
 
 
 def _migrate_db():
-    """إضافة الأعمدة الجديدة إذا لم تكن موجودة.
+    """إضافة الأعمدة والفهارس الجديدة إذا لم تكن موجودة.
     على Postgres يكفي Base.metadata.create_all لإنشاء الجداول الجديدة،
     لكن إضافة أعمدة لجداول موجودة تحتاج ALTER TABLE صريح.
     """
     from sqlalchemy import text
 
+    # ── ALTER TABLE migrations (إضافة أعمدة) ─────────────────────────────────
     if IS_SQLITE:
-        # SQLite: لا يدعم IF NOT EXISTS على ALTER TABLE — نتجاهل الأخطاء
-        migrations = [
+        column_migrations = [
             "ALTER TABLE products ADD COLUMN is_deal_of_day BOOLEAN DEFAULT 0",
             "ALTER TABLE products ADD COLUMN total_clicks INTEGER DEFAULT 0",
             "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
@@ -393,8 +395,7 @@ def _migrate_db():
             "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
         ]
     else:
-        # PostgreSQL: يدعم IF NOT EXISTS على ALTER TABLE منذ 9.6
-        migrations = [
+        column_migrations = [
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS is_deal_of_day BOOLEAN DEFAULT FALSE",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS total_clicks INTEGER DEFAULT 0",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS telegram_post_id VARCHAR(100)",
@@ -402,13 +403,28 @@ def _migrate_db():
             "ALTER TABLE publish_logs ADD COLUMN IF NOT EXISTS post_id VARCHAR(100)",
         ]
 
+    # ── فهارس جديدة لتحسين الأداء (تعمل على SQLite و Postgres) ────────────
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS ix_products_created_at ON products(created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_products_published_at ON products(published_at)",
+        "CREATE INDEX IF NOT EXISTS ix_products_source ON products(source)",
+        "CREATE INDEX IF NOT EXISTS ix_publish_logs_product_id ON publish_logs(product_id)",
+        "CREATE INDEX IF NOT EXISTS ix_publish_logs_channel ON publish_logs(channel)",
+    ]
+
     with engine.connect() as conn:
-        for sql in migrations:
+        for sql in column_migrations:
             try:
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
                 pass  # العمود موجود مسبقاً — تجاهل
+        for sql in index_migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception as exc:
+                logger.warning(f"فشل إنشاء فهرس: {exc}")
 
 
 def create_default_admin():

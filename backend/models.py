@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Text,
     DateTime, ForeignKey, Index,
 )
+from sqlalchemy.orm import relationship
 from backend.config import Base
 
 
@@ -39,9 +40,14 @@ class Product(Base):
     telegram_post_id = Column(String(100), nullable=True)  # message_id على Telegram
     x_tweet_id = Column(String(100), nullable=True)    # tweet_id على X
 
+    publish_logs = relationship("PublishLog", back_populates="product", lazy="noload")
+
     __table_args__ = (
-        Index("ix_products_status", "status"),
-        Index("ix_products_asin", "amazon_asin"),
+        Index("ix_products_status",       "status"),
+        Index("ix_products_asin",         "amazon_asin"),
+        Index("ix_products_created_at",   "created_at"),
+        Index("ix_products_published_at", "published_at"),
+        Index("ix_products_source",       "source"),
     )
 
 
@@ -58,8 +64,12 @@ class PublishLog(Base):
     error_message = Column(Text, nullable=True)
     published_at = Column(DateTime, default=datetime.utcnow)
 
+    product = relationship("Product", back_populates="publish_logs")
+
     __table_args__ = (
         Index("ix_publish_logs_published_at", "published_at"),
+        Index("ix_publish_logs_product_id",   "product_id"),
+        Index("ix_publish_logs_channel",      "channel"),
     )
 
 
@@ -123,4 +133,23 @@ class User(Base):
 
     __table_args__ = (
         Index("ix_users_username", "username"),
+    )
+
+
+class AuditLog(Base):
+    """سجل تدقيق — يتتبع كل العمليات الحساسة (تغيير الإعدادات، المفاتيح، المنتجات...)"""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False)        # "product.approve", "settings.update"
+    resource = Column(String(50), nullable=True)        # "product", "settings", "user", "api_key"
+    resource_id = Column(String(50), nullable=True)
+    detail = Column(Text, nullable=True)                # JSON
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_audit_created_at", "created_at"),
+        Index("ix_audit_user_action", "user_id", "action"),
     )

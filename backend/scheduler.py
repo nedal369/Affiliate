@@ -195,27 +195,44 @@ async def auto_discover_daily():
 
 # ── تنظيف السجلات القديمة ─────────────────────────────────────────────────────────
 async def cleanup_old_records():
-    from backend.config import SessionLocal
-    from backend.models import Product, PublishLog
+    from backend.config import SessionLocal, get_setting
+    from backend.models import Product, PublishLog, ScraperCache, AuditLog
     from datetime import timedelta
 
-    cutoff = datetime.utcnow() - timedelta(days=90)
+    cutoff_90d = datetime.utcnow() - timedelta(days=90)
+    cutoff_180d = datetime.utcnow() - timedelta(days=180)
+    cache_ttl_hours = int(get_setting("scraper_cache_ttl_hours", 6))
+    cutoff_cache = datetime.utcnow() - timedelta(hours=cache_ttl_hours)
+
     try:
         with SessionLocal() as db:
-            old_logs = db.query(PublishLog).filter(PublishLog.published_at < cutoff).count()
-            db.query(PublishLog).filter(PublishLog.published_at < cutoff).delete()
+            # سجلات النشر القديمة (>90 يوم)
+            old_logs = db.query(PublishLog).filter(PublishLog.published_at < cutoff_90d).count()
+            db.query(PublishLog).filter(PublishLog.published_at < cutoff_90d).delete()
 
+            # المنتجات المرفوضة/الفاشلة القديمة
             old_products = (
                 db.query(Product)
-                .filter(Product.created_at < cutoff, Product.status.in_(["rejected", "failed"]))
+                .filter(Product.created_at < cutoff_90d, Product.status.in_(["rejected", "failed"]))
                 .count()
             )
             db.query(Product).filter(
-                Product.created_at < cutoff, Product.status.in_(["rejected", "failed"])
+                Product.created_at < cutoff_90d, Product.status.in_(["rejected", "failed"])
             ).delete()
 
+            # كاش السكرابر المنتهي
+            old_cache = db.query(ScraperCache).filter(ScraperCache.fetched_at < cutoff_cache).count()
+            db.query(ScraperCache).filter(ScraperCache.fetched_at < cutoff_cache).delete()
+
+            # سجلات التدقيق الأقدم من 180 يوم
+            old_audit = db.query(AuditLog).filter(AuditLog.created_at < cutoff_180d).count()
+            db.query(AuditLog).filter(AuditLog.created_at < cutoff_180d).delete()
+
             db.commit()
-        logger.info(f"تنظيف: {old_logs} سجل نشر، {old_products} منتج قديم")
+        logger.info(
+            f"تنظيف: {old_logs} نشر، {old_products} منتج قديم، "
+            f"{old_cache} كاش منتهي، {old_audit} audit log"
+        )
     except Exception as exc:
         logger.error(f"خطأ في تنظيف السجلات: {exc}")
 

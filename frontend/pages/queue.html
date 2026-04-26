@@ -234,17 +234,19 @@ async function loadQueue() {
   list.innerHTML = '<div style="text-align:center;padding:64px 0;"><div class="skeleton" style="height:120px;margin-bottom:16px;"></div><div class="skeleton" style="height:120px;"></div></div>';
 
   try {
-    [queueData] = await Promise.all([
-      fetch('/api/queue').then(r => r.json()),
+    const [queueResp] = await Promise.all([
+      fetch('/api/queue?per_page=200').then(r => r.json()),
       loadScheduleInfo(),
     ]);
+    // الـ endpoint الآن يُرجع {total, page, per_page, items}
+    queueData = Array.isArray(queueResp) ? queueResp : (queueResp.items || []);
+    const total = queueResp.total ?? queueData.length;
     renderQueue();
-    const count = queueData.length;
-    document.getElementById('queue-count').textContent = count > 0
-      ? `${count} منتج بانتظار الموافقة`
+    document.getElementById('queue-count').textContent = total > 0
+      ? `${total} منتج بانتظار الموافقة`
       : 'لا توجد منتجات بانتظار الموافقة';
-    document.getElementById('btn-approve-all').disabled = count === 0;
-    updateQueueBadge(count);
+    document.getElementById('btn-approve-all').disabled = total === 0;
+    updateQueueBadge(total);
   } catch (e) {
     list.innerHTML = '<div style="text-align:center;padding:64px;color:var(--danger);">خطأ في تحميل القائمة</div>';
   }
