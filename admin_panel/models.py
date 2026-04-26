@@ -18,6 +18,26 @@ class MasterBase(DeclarativeBase):
     pass
 
 
+class Operator(MasterBase):
+    """مالك/مشغّل منصة الـ SaaS — مختلف تماماً عن admin instances العملاء.
+    هذا الحساب يدخل لوحة الأدمن المركزية لإدارة جميع العملاء.
+    """
+    __tablename__ = "operators"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), default="super_admin")  # super_admin | operator
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_operators_username", "username"),
+    )
+
+
 class Client(MasterBase):
     """العميل = حساب SaaS واحد، له instance خاصة على Render"""
     __tablename__ = "clients"

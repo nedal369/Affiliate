@@ -3,6 +3,7 @@ admin_panel/main.py — لوحة المدير المركزية للـ SaaS.
 تعمل كـ instance منفصلة عن instances العملاء.
 
 المسؤوليات:
+  • تسجيل دخول مالك المنصة (Operator) — منفصل عن admin instances العملاء
   • CRUD للعملاء (إنشاء/تعليق/إلغاء)
   • عرض إحصائيات الاستخدام
   • استقبال ويب هوكس Stripe (إن فُعّل)
@@ -14,8 +15,6 @@ admin_panel/main.py — لوحة المدير المركزية للـ SaaS.
 import asyncio
 import logging
 import os
-import secrets
-import subprocess
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -24,26 +23,36 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from admin_panel.models import (
-    Client, UsageLog, MasterSession, init_master_db, SUBSCRIPTION_PLANS,
+    Client, UsageLog, Operator, MasterSession, init_master_db, SUBSCRIPTION_PLANS,
 )
-from passlib.context import CryptContext
+from admin_panel.auth import (
+    authenticate_operator, create_token, get_operator_from_token,
+    create_default_owner,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("admin_panel")
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "create_client.py"
+STATIC_DIR = Path(__file__).parent / "static"
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "").lower() == "production"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_master_db()
+    try:
+        create_default_owner()
+    except Exception as exc:
+        logger.error(f"فشل إنشاء حساب المالك الافتراضي: {exc}")
     logger.info("✓ Admin Panel جاهز")
     yield
 
@@ -63,23 +72,112 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Admin-Key"],
 )
 
+# ── ملفات ثابتة (HTML للـ login والـ dashboard) ────────────────────────────
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ── Auth بسيط: API key في header (لا حاجة لـ JWT في الأدمن) ──────────────
+
+# ── المسارات العامة (لا تحتاج مصادقة) ─────────────────────────────────────
+_PUBLIC_PATHS = {
+    "/", "/health", "/login", "/api/auth/login", "/webhook/stripe",
+}
+_PUBLIC_PREFIXES = ("/static/",)
+
+
+# ── Auth: JWT cookie للمالك + X-Admin-Key للوصول البرمجي ────────────────
 @app.middleware("http")
 async def admin_auth(request: Request, call_next):
-    if request.url.path in ("/health", "/webhook/stripe"):
+    path = request.url.path
+
+    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
         return await call_next(request)
-    if not ADMIN_API_KEY:
-        return JSONResponse({"detail": "ADMIN_API_KEY غير مضبوط في الخادم"}, status_code=500)
-    if request.headers.get("X-Admin-Key") != ADMIN_API_KEY:
+
+    # ① JWT cookie أولاً (تسجيل دخول الـ UI)
+    token = request.cookies.get("operator_token")
+    if token:
+        operator = get_operator_from_token(token)
+        if operator:
+            request.state.operator = operator
+            return await call_next(request)
+
+    # ② API key (للوصول البرمجي/CLI/scripts)
+    if ADMIN_API_KEY and request.headers.get("X-Admin-Key") == ADMIN_API_KEY:
+        request.state.operator = {"id": 0, "username": "api-key", "role": "super_admin"}
+        return await call_next(request)
+
+    # ③ غير مصادق
+    if path.startswith("/api/"):
         return JSONResponse({"detail": "غير مصرّح"}, status_code=401)
-    return await call_next(request)
+    return RedirectResponse(url="/login", status_code=302)
 
 
 # ── Health ────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+# ── الصفحة الرئيسية: redirect حسب حالة الجلسة ──────────────────────────
+@app.get("/")
+async def root(request: Request):
+    token = request.cookies.get("operator_token")
+    if token and get_operator_from_token(token):
+        return RedirectResponse(url="/dashboard", status_code=302)
+    return RedirectResponse(url="/login", status_code=302)
+
+
+@app.get("/login")
+async def login_page():
+    f = STATIC_DIR / "login.html"
+    if f.exists():
+        return FileResponse(str(f))
+    return JSONResponse({"detail": "صفحة الدخول غير موجودة"}, status_code=404)
+
+
+@app.get("/dashboard")
+async def dashboard_page():
+    f = STATIC_DIR / "dashboard.html"
+    if f.exists():
+        return FileResponse(str(f))
+    return JSONResponse({"detail": "صفحة لوحة التحكم غير موجودة"}, status_code=404)
+
+
+# ── تسجيل الدخول/الخروج ───────────────────────────────────────────────────
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginBody, response: Response):
+    operator = authenticate_operator(body.username, body.password)
+    if not operator:
+        raise HTTPException(401, "اسم المستخدم أو كلمة المرور غير صحيحة")
+
+    token = create_token(operator["id"], operator["username"], operator["role"])
+    response.set_cookie(
+        key="operator_token",
+        value=token,
+        httponly=True,
+        samesite="strict" if IS_PRODUCTION else "lax",
+        secure=IS_PRODUCTION,
+        max_age=60 * 60 * 24 * 7,
+    )
+    return {"success": True, "operator": operator}
+
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("operator_token")
+    return {"success": True}
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    op = getattr(request.state, "operator", None)
+    if not op:
+        raise HTTPException(401, "غير مصادق")
+    return {"operator": op}
 
 
 # ── خطط الاشتراك ──────────────────────────────────────────────────────────
@@ -121,7 +219,6 @@ async def create_client(body: CreateClientBody):
         if existing:
             raise HTTPException(409, "البريد الإلكتروني مسجّل مسبقاً")
 
-    # تشغيل السكريبت في الخلفية — لا ننتظر اكتماله (10-15 دقيقة عادةً)
     asyncio.create_task(_run_provisioning_script(body))
     return {
         "success": True,
@@ -176,7 +273,6 @@ def _change_status(client_id: int, new_status: str) -> dict:
             client.activated_at = datetime.utcnow()
             client.suspended_at = None
         db.commit()
-        # TODO: استدعاء Render API لإيقاف/تشغيل الـ service
         return {"success": True, "client": _client_dict(client)}
 
 
@@ -212,12 +308,8 @@ async def client_usage(client_id: int, period: Optional[str] = None):
 # ── webhook Stripe (هيكل أساسي) ──────────────────────────────────────────
 @app.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    """Webhook لاستقبال أحداث الفواتير من Stripe.
-    يُفعّل/يعلّق العميل تلقائياً حسب حالة الدفع.
-    """
     payload = await request.body()
     # TODO: التحقق من توقيع Stripe-Signature header قبل معالجة الـ event
-    # event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     logger.info(f"استلام Stripe webhook: {len(payload)} byte")
     return {"received": True}
 

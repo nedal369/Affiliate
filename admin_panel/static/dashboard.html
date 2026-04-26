@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة مالك المنصة — Admin Panel</title>
+  <style>
+    :root {
+      --primary: #5b3df5;
+      --primary-hover: #4a30d9;
+      --bg: #0f0f1a;
+      --card: #1a1a2e;
+      --text: #ffffff;
+      --text-secondary: #a0a0b8;
+      --border: #2a2a45;
+      --danger: #ff4757;
+      --success: #2ed573;
+      --warning: #ffa502;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Plus Jakarta Sans", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .topbar {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar h1 { font-size: 17px; font-weight: 700; }
+    .topbar .badge { color: #a892ff; font-size: 11px; margin-right: 6px; }
+    .user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+    .btn-logout {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-logout:hover { color: var(--danger); border-color: var(--danger); }
+    main { padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .stat-value { font-size: 24px; font-weight: 700; }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .section-header h2 { font-size: 16px; font-weight: 700; }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .clients-table {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: right;
+      padding: 14px 16px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 14px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    .status {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status.active { background: rgba(46, 213, 115, 0.15); color: var(--success); }
+    .status.suspended { background: rgba(255, 165, 2, 0.15); color: var(--warning); }
+    .status.cancelled { background: rgba(255, 71, 87, 0.15); color: var(--danger); }
+    .status.pending { background: rgba(160, 160, 184, 0.15); color: var(--text-secondary); }
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+    .empty .icon { font-size: 44px; margin-bottom: 14px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <span class="badge">SaaS Operator</span>
+      <h1 style="display:inline">لوحة مالك المنصة</h1>
+    </div>
+    <div class="user-info">
+      <span id="username-display">...</span>
+      <button class="btn-logout" onclick="handleLogout()">خروج</button>
+    </div>
+  </div>
+
+  <main>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">إجمالي العملاء</div>
+        <div class="stat-value" id="stat-total">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">نشط</div>
+        <div class="stat-value" id="stat-active">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">معلّق</div>
+        <div class="stat-value" id="stat-suspended">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">في الانتظار</div>
+        <div class="stat-value" id="stat-pending">-</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>العملاء</h2>
+      <button class="btn-primary" onclick="loadClients()">تحديث</button>
+    </div>
+
+    <div class="clients-table">
+      <table>
+        <thead>
+          <tr>
+            <th>العميل</th>
+            <th>البريد</th>
+            <th>الخطة</th>
+            <th>الحالة</th>
+            <th>الرابط</th>
+            <th>تاريخ الإنشاء</th>
+          </tr>
+        </thead>
+        <tbody id="clients-tbody">
+          <tr><td colspan="6" class="empty">جاري التحميل...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    async function loadMe() {
+      try {
+        const r = await fetch("/api/auth/me", { credentials: "include" });
+        if (!r.ok) { window.location.href = "/login"; return; }
+        const data = await r.json();
+        document.getElementById("username-display").textContent = data.operator.username;
+      } catch (err) {
+        window.location.href = "/login";
+      }
+    }
+
+    async function loadClients() {
+      const tbody = document.getElementById("clients-tbody");
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">جاري التحميل...</td></tr>`;
+      try {
+        const r = await fetch("/api/clients", { credentials: "include" });
+        if (r.status === 401) { window.location.href = "/login"; return; }
+        const data = await r.json();
+        renderClients(data.items || []);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">تعذّر تحميل البيانات</td></tr>`;
+      }
+    }
+
+    function renderClients(clients) {
+      const tbody = document.getElementById("clients-tbody");
+      const counts = { total: clients.length, active: 0, suspended: 0, pending: 0 };
+      clients.forEach(c => {
+        if (c.status === "active") counts.active++;
+        else if (c.status === "suspended") counts.suspended++;
+        else if (c.status === "pending") counts.pending++;
+      });
+      document.getElementById("stat-total").textContent = counts.total;
+      document.getElementById("stat-active").textContent = counts.active;
+      document.getElementById("stat-suspended").textContent = counts.suspended;
+      document.getElementById("stat-pending").textContent = counts.pending;
+
+      if (clients.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">
+          <div class="icon">👥</div>لا يوجد عملاء بعد</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = clients.map(c => `
+        <tr>
+          <td><strong>${escapeHtml(c.name)}</strong></td>
+          <td>${escapeHtml(c.email)}</td>
+          <td>${escapeHtml(c.plan)}</td>
+          <td><span class="status ${c.status}">${labelStatus(c.status)}</span></td>
+          <td>${c.service_url ? `<a href="${escapeHtml(c.service_url)}" target="_blank" style="color:#a892ff">رابط</a>` : "-"}</td>
+          <td>${c.created_at ? new Date(c.created_at).toLocaleDateString("ar") : "-"}</td>
+        </tr>`).join("");
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return "";
+      return String(s).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+    }
+    function labelStatus(s) {
+      return ({active:"نشط", suspended:"معلّق", cancelled:"ملغي", pending:"في الانتظار"})[s] || s;
+    }
+
+    async function handleLogout() {
+      try {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      } catch (err) {}
+      window.location.href = "/login";
+    }
+
+    loadMe();
+    loadClients();
+  </script>
+</body>
+</html>
