@@ -22,14 +22,48 @@ DB_PATH = BASE_DIR / "database" / "affiliate.db"
 ENV_PATH = BASE_DIR / ".env"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-
 # ── قاعدة البيانات ───────────────────────────────────────────────────────────
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False,
-)
+# الأولوية:
+#   1) DATABASE_URL (PostgreSQL خارجي — يضمن استمرار البيانات على Render)
+#   2) SQLite محلي على نفس الخادم (يضيع عند كل deploy على Render Free)
+_DB_URL_ENV = os.getenv("DATABASE_URL", "").strip()
+
+if _DB_URL_ENV:
+    # Render و Heroku يُصدران postgres:// لكن SQLAlchemy 2.x يحتاج postgresql://
+    if _DB_URL_ENV.startswith("postgres://"):
+        _DB_URL_ENV = _DB_URL_ENV.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = _DB_URL_ENV
+    IS_SQLITE = DATABASE_URL.startswith("sqlite")
+    if IS_SQLITE:
+        engine = create_engine(
+            DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            echo=False,
+        )
+    else:
+        # PostgreSQL — pool_pre_ping يتحقق من الاتصال قبل كل استعلام لتجنب stale connections
+        engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=False,
+        )
+    _db_label = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL
+    logger.info(f"قاعدة البيانات الخارجية: {_db_label}")
+else:
+    DATABASE_URL = f"sqlite:///{DB_PATH}"
+    IS_SQLITE = True
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=False,
+    )
+    if os.getenv("ENVIRONMENT", "").lower() == "production":
+        logger.warning(
+            "⚠️ تشغيل SQLite في بيئة الإنتاج — البيانات ستضيع عند كل deploy على Render Free. "
+            "اضبط متغير DATABASE_URL لقاعدة PostgreSQL خارجية للاحتفاظ بالبيانات."
+        )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -301,31 +335,31 @@ def _seed_default_categories():
 
 
 def _migrate_db():
-    """إضافة الأعمدة الجديدة إذا لم تكن موجودة — SQLite لا يدعم إضافتها تلقائياً"""
+    """إضافة الأعمدة الجديدة إذا لم تكن موجودة.
+    على Postgres يكفي Base.metadata.create_all لإنشاء الجداول الجديدة،
+    لكن إضافة أعمدة لجداول موجودة تحتاج ALTER TABLE صريح.
+    """
     from sqlalchemy import text
-    migrations = [
-        "ALTER TABLE products ADD COLUMN is_deal_of_day BOOLEAN DEFAULT 0",
-        "ALTER TABLE products ADD COLUMN total_clicks INTEGER DEFAULT 0",
-        "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
-        "ALTER TABLE products ADD COLUMN x_tweet_id VARCHAR(100)",
-        "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
-        # جدول كاش السكرابر
-        """CREATE TABLE IF NOT EXISTS scraper_cache (
-            cache_key VARCHAR(255) PRIMARY KEY,
-            payload TEXT NOT NULL,
-            fetched_at DATETIME
-        )""",
-        # جدول تصنيفات الاكتشاف
-        """CREATE TABLE IF NOT EXISTS discovery_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cat_id VARCHAR(100) UNIQUE NOT NULL,
-            name_ar VARCHAR(200) NOT NULL,
-            icon VARCHAR(20) DEFAULT '🛍️',
-            keywords TEXT NOT NULL,
-            active BOOLEAN DEFAULT 1,
-            sort_order INTEGER DEFAULT 0
-        )""",
-    ]
+
+    if IS_SQLITE:
+        # SQLite: لا يدعم IF NOT EXISTS على ALTER TABLE — نتجاهل الأخطاء
+        migrations = [
+            "ALTER TABLE products ADD COLUMN is_deal_of_day BOOLEAN DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN total_clicks INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
+            "ALTER TABLE products ADD COLUMN x_tweet_id VARCHAR(100)",
+            "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
+        ]
+    else:
+        # PostgreSQL: يدعم IF NOT EXISTS على ALTER TABLE منذ 9.6
+        migrations = [
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS is_deal_of_day BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS total_clicks INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS telegram_post_id VARCHAR(100)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS x_tweet_id VARCHAR(100)",
+            "ALTER TABLE publish_logs ADD COLUMN IF NOT EXISTS post_id VARCHAR(100)",
+        ]
+
     with engine.connect() as conn:
         for sql in migrations:
             try:

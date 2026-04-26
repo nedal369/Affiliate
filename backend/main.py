@@ -750,6 +750,16 @@ async def test_key(service: str):
     return {"success": False, "message": f"اختبار {service} غير مدعوم"}
 
 
+# ── تشخيص شامل للذكاء الاصطناعي ──────────────────────────────────────────────
+@app.get("/api/ai/diagnostics")
+async def ai_diagnostics():
+    """يكشف لماذا يقع التوليد على القالب الجاهز:
+    أي مزوّد لديه مفتاح، أي نماذج جاهزة، ونتيجة محاولة فعلية للأول.
+    """
+    from backend.services.ai_service import diagnose_ai
+    return await diagnose_ai()
+
+
 # ── إضافة رابط إحالة يدوي (جلب تلقائي للبيانات) ────────────────────────────────
 class ManualLinkBody(BaseModel):
     url: str

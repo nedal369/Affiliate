@@ -435,10 +435,17 @@ _PROVIDER_CALLERS = {
 
 # ── الدوال الرئيسية ───────────────────────────────────────────────────────────────
 
+def _short_error(exc: Exception, max_len: int = 60) -> str:
+    """اختصر رسالة الخطأ لتناسب عمود ai_model_used (VARCHAR(100))"""
+    msg = str(exc).strip().replace("\n", " ")
+    return msg[:max_len] + "…" if len(msg) > max_len else msg
+
+
 async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
     """
     يولّد محتوى عربي للمنتج.
     يُرجع: (النص المولَّد, اسم النموذج المستخدم)
+    عند الفشل: يرجع القالب الثابت مع سبب الفشل في model_used للتشخيص.
     """
     user_prompt = USER_PROMPT_TEMPLATE.format(
         title=product.get("title", ""),
@@ -453,10 +460,11 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
     models_to_try = _build_model_priority() if llm == "auto" else [llm]
 
     if not models_to_try:
-        logger.warning("لا توجد نماذج AI مضبوطة — استخدام template ثابت")
-        return _make_fallback(product), "fallback-template"
+        logger.warning("لا توجد نماذج AI مضبوطة — أضف مفتاح API من صفحة الإعدادات")
+        return _make_fallback(product), "fallback: لا يوجد مفتاح AI مضبوط"
 
     last_error: Optional[Exception] = None
+    last_model: Optional[str] = None
     for model_id in models_to_try:
         if model_id not in SUPPORTED_MODELS:
             logger.warning(f"نموذج غير معروف: {model_id}")
@@ -467,20 +475,22 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         if not caller:
             continue
 
+        last_model = model_id
         try:
             logger.info(f"توليد المحتوى بـ {model_id}")
             content = await caller(model_id, user_prompt)
             if content and len(content.strip()) > 30:
                 logger.info(f"نجح {model_id} ✓")
                 return content, model_id
-            last_error = RuntimeError(f"{model_id}: محتوى قصير أو فارغ (طول={len(content) if content else 0})")
-            logger.warning(str(last_error))
+            last_error = RuntimeError(f"محتوى قصير/فارغ (طول={len(content) if content else 0})")
+            logger.warning(f"{model_id}: {last_error}")
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id}: {exc}")
 
     logger.error(f"فشلت كل النماذج ({len(models_to_try)} محاولة) — آخر خطأ: {last_error}")
-    return _make_fallback(product), "fallback-template"
+    err_label = f"fallback ({last_model}): {_short_error(last_error)}" if last_error else "fallback: فشل غير معروف"
+    return _make_fallback(product), err_label
 
 
 async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
@@ -545,9 +555,10 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
     models_to_try = _build_model_priority() if llm == "auto" else [llm]
 
     if not models_to_try:
-        return _make_deal_of_day_fallback(product), "fallback-template"
+        return _make_deal_of_day_fallback(product), "fallback: لا يوجد مفتاح AI مضبوط"
 
     last_error: Optional[Exception] = None
+    last_model: Optional[str] = None
     for model_id in models_to_try:
         if model_id not in SUPPORTED_MODELS:
             continue
@@ -555,18 +566,20 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         caller = _PROVIDER_CALLERS.get(provider)
         if not caller:
             continue
+        last_model = model_id
         try:
             logger.info(f"توليد محتوى عرض اليوم بـ {model_id}")
             content = await caller(model_id, user_prompt, system=DEAL_OF_DAY_SYSTEM)
             if content and len(content.strip()) > 30:
                 return content, model_id
-            last_error = RuntimeError(f"{model_id}: محتوى قصير")
+            last_error = RuntimeError(f"محتوى قصير/فارغ")
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id} (عرض اليوم): {exc}")
 
     logger.error(f"فشلت كل النماذج لعرض اليوم — آخر خطأ: {last_error}")
-    return _make_deal_of_day_fallback(product), "fallback-template"
+    err_label = f"fallback ({last_model}): {_short_error(last_error)}" if last_error else "fallback: فشل غير معروف"
+    return _make_deal_of_day_fallback(product), err_label
 
 
 def _make_deal_of_day_fallback(product: dict) -> str:
@@ -610,3 +623,66 @@ async def test_model(model_id: str) -> dict:
 
 async def get_available_models() -> list:
     return [{"id": k, **v} for k, v in SUPPORTED_MODELS.items()]
+
+
+async def diagnose_ai() -> dict:
+    """
+    فحص شامل لإعدادات الذكاء الاصطناعي. يُرجع:
+      - configured_providers: المزوّدون الذين لديهم مفاتيح
+      - available_models: النماذج التي يمكن استخدامها فعلاً
+      - priority_order: الترتيب الفعلي عند التوليد
+      - test_result: نتيجة استدعاء أول نموذج متاح بمدخل اختباري
+    """
+    from backend.config import get_api_key, is_key_from_env
+
+    providers = list({info["provider"] for info in SUPPORTED_MODELS.values()})
+    configured = []
+    for prov in providers:
+        service = _PROVIDER_KEY_MAP.get(prov, prov)
+        key = get_api_key(service)
+        if key:
+            configured.append({
+                "provider": prov,
+                "source": "env" if is_key_from_env(service) else "database",
+                "key_preview": key[:4] + "…" + key[-4:] if len(key) > 8 else "••••",
+            })
+
+    priority = _build_model_priority()
+    available = [
+        {"id": mid, **SUPPORTED_MODELS[mid]} for mid in priority if mid in SUPPORTED_MODELS
+    ]
+
+    test_result: dict = {"attempted": False}
+    if priority:
+        first = priority[0]
+        test_result["attempted"] = True
+        test_result["model"] = first
+        try:
+            sample = {
+                "title": "اختبار",
+                "price_original": 100,
+                "price_current": 70,
+                "discount_pct": 30,
+                "rating": 4.5,
+                "rating_count": 100,
+                "affiliate_url": "https://example.com",
+            }
+            content, used = await generate_content(sample, llm=first)
+            if used.startswith("fallback"):
+                test_result["success"] = False
+                test_result["error"] = used
+            else:
+                test_result["success"] = True
+                test_result["model_used"] = used
+                test_result["preview"] = content[:120]
+        except Exception as exc:
+            test_result["success"] = False
+            test_result["error"] = str(exc)
+
+    return {
+        "configured_providers": configured,
+        "available_models": available,
+        "priority_order": priority,
+        "test_result": test_result,
+        "healthy": bool(priority) and test_result.get("success", False),
+    }
