@@ -56,20 +56,7 @@ SUPPORTED_MODELS = {
         "label": "Llama 3.3 70B Groq — الأسرع / جودة جيدة",
     },
     # ── OpenRouter — مفتاح واحد لمئات النماذج ─────────────
-    "openrouter/google/gemini-2.0-flash-exp:free": {
-        "provider": "openrouter",
-        "name": "Gemini 2.0 Flash (مجاني)",
-        "speed": "fast",
-        "quality": "high",
-        "label": "Gemini 2.0 Flash via OpenRouter — مجاني / جودة عالية",
-    },
-    "openrouter/google/gemini-flash-1.5": {
-        "provider": "openrouter",
-        "name": "Gemini 1.5 Flash (OpenRouter)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Gemini 1.5 Flash via OpenRouter — سريع / جودة جيدة",
-    },
+    # نماذج مجانية موثوقة (مُرتَّبة حسب الأولوية)
     "openrouter/meta-llama/llama-3.3-70b-instruct:free": {
         "provider": "openrouter",
         "name": "Llama 3.3 70B (مجاني)",
@@ -77,12 +64,19 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "Llama 3.3 70B via OpenRouter — مجاني / جودة جيدة",
     },
-    "openrouter/meta-llama/llama-3.3-70b-instruct": {
+    "openrouter/deepseek/deepseek-r1:free": {
         "provider": "openrouter",
-        "name": "Llama 3.3 70B (OpenRouter)",
+        "name": "DeepSeek R1 (مجاني)",
+        "speed": "medium",
+        "quality": "high",
+        "label": "DeepSeek R1 via OpenRouter — مجاني / جودة عالية",
+    },
+    "openrouter/deepseek/deepseek-chat:free": {
+        "provider": "openrouter",
+        "name": "DeepSeek Chat (مجاني)",
         "speed": "fast",
         "quality": "good",
-        "label": "Llama 3.3 70B via OpenRouter — سريع / جودة جيدة",
+        "label": "DeepSeek Chat via OpenRouter — مجاني / جودة جيدة",
     },
     "openrouter/qwen/qwen-2.5-72b-instruct:free": {
         "provider": "openrouter",
@@ -97,6 +91,27 @@ SUPPORTED_MODELS = {
         "speed": "fast",
         "quality": "good",
         "label": "Mistral 7B via OpenRouter — مجاني / جودة جيدة",
+    },
+    "openrouter/google/gemini-2.0-flash-001": {
+        "provider": "openrouter",
+        "name": "Gemini 2.0 Flash (OpenRouter)",
+        "speed": "fast",
+        "quality": "high",
+        "label": "Gemini 2.0 Flash via OpenRouter — سريع / جودة عالية",
+    },
+    "openrouter/google/gemini-flash-1.5": {
+        "provider": "openrouter",
+        "name": "Gemini 1.5 Flash (OpenRouter)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Gemini 1.5 Flash via OpenRouter — سريع / جودة جيدة",
+    },
+    "openrouter/meta-llama/llama-3.3-70b-instruct": {
+        "provider": "openrouter",
+        "name": "Llama 3.3 70B (OpenRouter مدفوع)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Llama 3.3 70B via OpenRouter — مدفوع / جودة جيدة",
     },
     "openrouter/openai/gpt-4o-mini": {
         "provider": "openrouter",

@@ -251,11 +251,13 @@ DEFAULT_SETTINGS = {
     "llm_fallback": True,
     "llm_priority": [
         "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+        "openrouter/deepseek/deepseek-r1:free",
+        "openrouter/deepseek/deepseek-chat:free",
         "openrouter/qwen/qwen-2.5-72b-instruct:free",
         "openrouter/mistralai/mistral-7b-instruct:free",
+        "openrouter/google/gemini-2.0-flash-001",
         "openrouter/meta-llama/llama-3.3-70b-instruct",
         "llama-3.3-70b-versatile",
-        "openrouter/google/gemini-2.0-flash-exp:free",
         "gpt-4o-mini",
         "gemini-1.5-flash",
         "claude-haiku-4-5",
@@ -275,7 +277,13 @@ DEFAULT_SETTINGS = {
 }
 
 
-_OLD_GEMINI_FIRST_PRIORITY = "openrouter/google/gemini-2.0-flash-exp:free"
+# النماذج المنتهية/المحذوفة التي يجب استبدالها تلقائياً
+_DEPRECATED_MODELS = {
+    "openrouter/google/gemini-2.0-flash-exp:free",  # محذوف من OpenRouter
+}
+
+# رقم إصدار قائمة الأولوية — نرفعه عند كل تحديث جوهري لإجبار التطبيق في قواعد البيانات الموجودة
+_LLM_PRIORITY_VERSION = 3
 
 
 def init_default_settings():
@@ -285,14 +293,21 @@ def init_default_settings():
         if existing is None:
             set_setting(key, value)
 
-    # إذا كانت قائمة الأولوية القديمة تبدأ بجيميني، استبدلها بالقائمة الجديدة التي تُقدّم OpenRouter أولاً
+    # إذا كانت نسخة القائمة قديمة أو تحتوي نماذج منتهية، استبدلها بالقائمة الجديدة
+    stored_version = get_setting("llm_priority_version", 0)
     current_priority = get_setting("llm_priority", [])
-    if isinstance(current_priority, list) and current_priority and current_priority[0] == _OLD_GEMINI_FIRST_PRIORITY:
+    has_deprecated = (
+        isinstance(current_priority, list)
+        and any(m in _DEPRECATED_MODELS for m in current_priority)
+    )
+    if stored_version < _LLM_PRIORITY_VERSION or has_deprecated:
         set_setting("llm_priority", DEFAULT_SETTINGS["llm_priority"])
-        logger.info("تم تحديث قائمة أولوية النماذج: OpenRouter/Llama أولاً بدلاً من Gemini")
+        set_setting("llm_priority_version", _LLM_PRIORITY_VERSION)
+        logger.info(f"تم تحديث قائمة أولوية النماذج إلى الإصدار {_LLM_PRIORITY_VERSION}")
 
-    # إذا كان primary_llm فارغاً (القديم)، اضبطه على الافتراضي الجديد
-    if not get_setting("primary_llm", ""):
+    # إذا كان primary_llm فارغاً أو نموذجاً منتهياً، اضبطه على الافتراضي الجديد
+    current_primary = get_setting("primary_llm", "")
+    if not current_primary or current_primary in _DEPRECATED_MODELS:
         set_setting("primary_llm", DEFAULT_SETTINGS["primary_llm"])
         logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
 
