@@ -309,6 +309,12 @@ function renderQueue() {
 
       <div class="product-content">
         <div class="content-label">📝 محتوى النشر المقترح</div>
+        ${(p.ai_model_used || '').startsWith('fallback') ? `
+          <div style="background:rgba(255,149,0,0.1);border:1px solid rgba(255,149,0,0.3);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#b45309;">
+            ⚠️ المحتوى أعلاه قالب جاهز — الذكاء الاصطناعي لم يعمل. السبب: <code>${p.ai_model_used.replace('fallback', '').replace(/^[:\s]+/, '') || 'غير معروف'}</code>
+            — افحص <a href="/api/ai/diagnostics" target="_blank" style="text-decoration:underline;">صفحة التشخيص</a>.
+          </div>
+        ` : ''}
         <div class="content-text" id="content-${p.id}">${p.ai_content || 'لا يوجد محتوى مولّد'}</div>
       </div>
 
@@ -321,7 +327,7 @@ function renderQueue() {
           : `<button class="btn btn-secondary btn-sm" onclick="setDealOfDay(${p.id})" title="تعيين كعرض اليوم">⭐ عرض اليوم</button>`
         }
         <button class="btn btn-danger" onclick="rejectProduct(${p.id})">✕ رفض</button>
-        <span class="model-tag">🤖 ${p.ai_model_used || 'غير محدد'}</span>
+        <span class="model-tag" style="${(p.ai_model_used || '').startsWith('fallback') ? 'background:rgba(255,149,0,0.15);color:#b45309;' : ''}">🤖 ${p.ai_model_used || 'غير محدد'}</span>
       </div>
     </div>
   `).join('');

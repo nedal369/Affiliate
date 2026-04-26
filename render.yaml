@@ -1,3 +1,12 @@
+databases:
+  # ── قاعدة بيانات PostgreSQL مجانية لتخزين دائم ─────────────────────────────
+  # Render يقدم Postgres مجاناً (يبقى البيانات بعد كل deploy/restart بعكس SQLite)
+  - name: affiliate-db
+    plan: free
+    region: frankfurt
+    databaseName: affiliate
+    user: affiliate
+
 services:
   - type: web
     name: affiliate-automation-system
@@ -12,11 +21,18 @@ services:
     envVars:
       # ── مطلوب دائماً ────────────────────────────────────────────────────────
       - key: ENCRYPTION_KEY
-        generateValue: true          # يُولَّد تلقائياً عند أول نشر
+        generateValue: true          # يُولَّد تلقائياً عند أول نشر — لا تغيّره أبداً
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: ENVIRONMENT
         value: production
+
+      # ── قاعدة البيانات — يربط تلقائياً بقاعدة Postgres أعلاه ────────────────
+      # هذا هو الفرق الجوهري: البيانات تبقى عبر كل التحديثات والإعادة تشغيل
+      - key: DATABASE_URL
+        fromDatabase:
+          name: affiliate-db
+          property: connectionString
 
       # ── OpenRouter (موصى به — بوابة موحّدة لجميع النماذج) ──────────────────
       - key: OPENROUTER_API_KEY
