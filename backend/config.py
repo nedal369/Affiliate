@@ -249,18 +249,13 @@ DEFAULT_SETTINGS = {
     "manual_approval": True,
     "primary_llm": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
     "llm_fallback": True,
+    # القائمة تحوي فقط نماذج OpenRouter المجانية (الـ :free) — لا نماذج مدفوعة ولا مزوّدين آخرين
     "llm_priority": [
         "openrouter/meta-llama/llama-3.3-70b-instruct:free",
         "openrouter/deepseek/deepseek-r1:free",
         "openrouter/deepseek/deepseek-chat:free",
         "openrouter/qwen/qwen-2.5-72b-instruct:free",
         "openrouter/mistralai/mistral-7b-instruct:free",
-        "openrouter/google/gemini-2.0-flash-001",
-        "openrouter/meta-llama/llama-3.3-70b-instruct",
-        "llama-3.3-70b-versatile",
-        "gpt-4o-mini",
-        "gemini-1.5-flash",
-        "claude-haiku-4-5",
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
@@ -283,7 +278,16 @@ _DEPRECATED_MODELS = {
 }
 
 # رقم إصدار قائمة الأولوية — نرفعه عند كل تحديث جوهري لإجبار التطبيق في قواعد البيانات الموجودة
-_LLM_PRIORITY_VERSION = 3
+_LLM_PRIORITY_VERSION = 4
+
+# قائمة النماذج المجانية فقط — أي نموذج خارج هذه القائمة يُستبدل تلقائياً في القائمة المخزّنة
+_FREE_OPENROUTER_MODELS = {
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/deepseek/deepseek-r1:free",
+    "openrouter/deepseek/deepseek-chat:free",
+    "openrouter/qwen/qwen-2.5-72b-instruct:free",
+    "openrouter/mistralai/mistral-7b-instruct:free",
+}
 
 
 def init_default_settings():
@@ -293,21 +297,29 @@ def init_default_settings():
         if existing is None:
             set_setting(key, value)
 
-    # إذا كانت نسخة القائمة قديمة أو تحتوي نماذج منتهية، استبدلها بالقائمة الجديدة
+    # إذا كانت نسخة القائمة قديمة، أو تحتوي نماذج منتهية، أو تحتوي أي نموذج غير مجاني — استبدلها بالكامل
     stored_version = get_setting("llm_priority_version", 0)
     current_priority = get_setting("llm_priority", [])
-    has_deprecated = (
+    has_non_free_or_deprecated = (
         isinstance(current_priority, list)
-        and any(m in _DEPRECATED_MODELS for m in current_priority)
+        and any(
+            m in _DEPRECATED_MODELS or m not in _FREE_OPENROUTER_MODELS
+            for m in current_priority
+        )
     )
-    if stored_version < _LLM_PRIORITY_VERSION or has_deprecated:
+    if stored_version < _LLM_PRIORITY_VERSION or has_non_free_or_deprecated:
         set_setting("llm_priority", DEFAULT_SETTINGS["llm_priority"])
         set_setting("llm_priority_version", _LLM_PRIORITY_VERSION)
-        logger.info(f"تم تحديث قائمة أولوية النماذج إلى الإصدار {_LLM_PRIORITY_VERSION}")
+        logger.info(
+            f"تم تحديث قائمة أولوية النماذج إلى الإصدار {_LLM_PRIORITY_VERSION} "
+            f"(نماذج OpenRouter المجانية فقط)"
+        )
 
-    # إذا كان primary_llm فارغاً أو نموذجاً منتهياً، اضبطه على الافتراضي الجديد
+    # primary_llm يجب أن يكون من النماذج المجانية فقط
     current_primary = get_setting("primary_llm", "")
-    if not current_primary or current_primary in _DEPRECATED_MODELS:
+    if (not current_primary
+            or current_primary in _DEPRECATED_MODELS
+            or current_primary not in _FREE_OPENROUTER_MODELS):
         set_setting("primary_llm", DEFAULT_SETTINGS["primary_llm"])
         logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
 

@@ -235,15 +235,28 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
+# قائمة النماذج المسموح بها — OpenRouter المجانية فقط
+_FREE_OPENROUTER_ONLY = {
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/deepseek/deepseek-r1:free",
+    "openrouter/deepseek/deepseek-chat:free",
+    "openrouter/qwen/qwen-2.5-72b-instruct:free",
+    "openrouter/mistralai/mistral-7b-instruct:free",
+}
+
+
 def _build_model_priority(custom_system: bool = False) -> list[str]:
     """
     يبني قائمة النماذج الجاهزة بناءً على المفاتيح المضبوطة فعلاً.
-    يُقدِّم OpenRouter إذا كان مفتاحه موجوداً، ثم الباقي.
+    مقيّد بنماذج OpenRouter المجانية فقط — أي نموذج آخر مرفوض حتى لو كان في الإعدادات.
     """
     from backend.config import get_api_key, get_setting
 
     primary = get_setting("primary_llm", "")
     saved_list = get_setting("llm_priority", [])
+
+    def is_allowed(model_id: str) -> bool:
+        return model_id in _FREE_OPENROUTER_ONLY
 
     def key_available(model_id: str) -> bool:
         info = SUPPORTED_MODELS.get(model_id)
@@ -254,23 +267,26 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 
     ordered: list[str] = []
 
-    # ① النموذج الأساسي أولاً إذا كان مفتاحه موجوداً
-    if primary and key_available(primary):
+    # ① النموذج الأساسي أولاً إذا كان مسموحاً ومفتاحه موجود
+    if primary and is_allowed(primary) and key_available(primary):
         ordered.append(primary)
 
-    # ② قائمة الأولوية المحفوظة في الإعدادات
+    # ② قائمة الأولوية المحفوظة — مع تصفية النماذج غير المجانية
     for mid in (saved_list if isinstance(saved_list, list) else []):
-        if mid not in ordered and key_available(mid):
+        if mid not in ordered and is_allowed(mid) and key_available(mid):
             ordered.append(mid)
 
-    # ③ إذا لم يُضبط شيء — جرّب كل نموذج مفتاحه موجود (OpenRouter أولاً)
+    # ③ إذا لم يُضبط شيء — أضف كل نماذج OpenRouter المجانية المتاحة بترتيب ثابت
     if not ordered:
-        # نرتب: openrouter أولاً ثم groq ثم البقية
-        provider_order = ["openrouter", "groq", "anthropic", "openai", "google"]
-        for prov in provider_order:
-            for mid, info in SUPPORTED_MODELS.items():
-                if info["provider"] == prov and mid not in ordered and key_available(mid):
-                    ordered.append(mid)
+        for mid in [
+            "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+            "openrouter/deepseek/deepseek-r1:free",
+            "openrouter/deepseek/deepseek-chat:free",
+            "openrouter/qwen/qwen-2.5-72b-instruct:free",
+            "openrouter/mistralai/mistral-7b-instruct:free",
+        ]:
+            if mid in SUPPORTED_MODELS and key_available(mid):
+                ordered.append(mid)
 
     return ordered
 
