@@ -85,13 +85,6 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "Qwen 2.5 72B via OpenRouter — مجاني / جودة جيدة",
     },
-    "openrouter/mistralai/mistral-7b-instruct:free": {
-        "provider": "openrouter",
-        "name": "Mistral 7B (مجاني)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Mistral 7B via OpenRouter — مجاني / جودة جيدة",
-    },
     "openrouter/google/gemini-2.0-flash-001": {
         "provider": "openrouter",
         "name": "Gemini 2.0 Flash (OpenRouter)",
@@ -236,12 +229,12 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
 # قائمة النماذج المسموح بها — OpenRouter المجانية فقط
+# (Mistral 7B :free حُذف بعد deprecate من OpenRouter — كان يُرجع 404 No endpoints found)
 _FREE_OPENROUTER_ONLY = {
     "openrouter/meta-llama/llama-3.3-70b-instruct:free",
     "openrouter/deepseek/deepseek-r1:free",
     "openrouter/deepseek/deepseek-chat:free",
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
-    "openrouter/mistralai/mistral-7b-instruct:free",
 }
 
 
@@ -283,7 +276,6 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
             "openrouter/deepseek/deepseek-r1:free",
             "openrouter/deepseek/deepseek-chat:free",
             "openrouter/qwen/qwen-2.5-72b-instruct:free",
-            "openrouter/mistralai/mistral-7b-instruct:free",
         ]:
             if mid in SUPPORTED_MODELS and key_available(mid):
                 ordered.append(mid)

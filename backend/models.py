@@ -4,7 +4,7 @@ models.py — نماذج قاعدة البيانات (SQLAlchemy)
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Text,
-    DateTime, ForeignKey, Index,
+    DateTime, Date, ForeignKey, Index,
 )
 from sqlalchemy.orm import relationship
 from backend.config import Base
@@ -107,6 +107,7 @@ class DiscoveryCategory(Base):
     keywords = Column(Text, nullable=False)                     # JSON list
     active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
+    last_used_date = Column(Date, nullable=True, index=True)   # لـ autopilot — منع تكرار التصنيف باليوم
 
 
 class ScraperCache(Base):

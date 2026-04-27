@@ -497,6 +497,60 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
     return results
 
 
+def pick_unused_categories_for_today(n: int = 2) -> list:
+    """يختار n تصنيفات لم تُستخدم اليوم (active=True فقط) — عشوائياً.
+    يُرجع list[DiscoveryCategory] (objects بحالة detached من الـ session).
+    """
+    import random
+    from datetime import date
+    from sqlalchemy import or_
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+
+    today = date.today()
+    with SessionLocal() as db:
+        pool = (
+            db.query(DiscoveryCategory)
+            .filter(
+                DiscoveryCategory.active == True,
+                or_(
+                    DiscoveryCategory.last_used_date.is_(None),
+                    DiscoveryCategory.last_used_date < today,
+                ),
+            )
+            .all()
+        )
+        # تحويل لـ dicts لتجنب الاعتماد على session detached
+        items = [
+            {
+                "id": c.id,
+                "cat_id": c.cat_id,
+                "name_ar": c.name_ar,
+                "icon": c.icon,
+                "keywords": c.keywords,
+            }
+            for c in pool
+        ]
+    random.shuffle(items)
+    return items[:n]
+
+
+def mark_categories_used(category_db_ids: list[int]) -> None:
+    """يُعلّم تصنيفات بأنها استُخدمت اليوم — يجب الاستدعاء قبل الـ discovery لمنع الـ race."""
+    from datetime import date
+    from backend.config import SessionLocal
+    from backend.models import DiscoveryCategory
+
+    if not category_db_ids:
+        return
+    today = date.today()
+    with SessionLocal() as db:
+        db.query(DiscoveryCategory).filter(
+            DiscoveryCategory.id.in_(category_db_ids)
+        ).update({"last_used_date": today}, synchronize_session=False)
+        db.commit()
+
+
 async def auto_discover_and_queue(
     max_categories: int = 5,
     products_per_category: int = 3,

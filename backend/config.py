@@ -280,7 +280,6 @@ DEFAULT_SETTINGS = {
         "openrouter/deepseek/deepseek-r1:free",
         "openrouter/deepseek/deepseek-chat:free",
         "openrouter/qwen/qwen-2.5-72b-instruct:free",
-        "openrouter/mistralai/mistral-7b-instruct:free",
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
@@ -294,16 +293,24 @@ DEFAULT_SETTINGS = {
     # ── السكرابر المجاني ──────────────────────────────────
     "amazon_data_source": "scraper",       # "scraper" | "rapidapi" | "auto"
     "scraper_cache_ttl_hours": 6,
+    # ── توقيع قناة تلقرام (يُلحق بنهاية كل منشور) ─────────
+    "telegram_footer": "\n\nللمزيد من العروض: https://t.me/Consulting_Sales",
+    # ── Autopilot ─────────────────────────────────────────
+    "autopilot_enabled": False,
+    "autopilot_cats_per_slot": 2,
+    "autopilot_products_per_cat": 5,
+    "autopilot_dedup_hours": 72,
 }
 
 
 # النماذج المنتهية/المحذوفة التي يجب استبدالها تلقائياً
 _DEPRECATED_MODELS = {
-    "openrouter/google/gemini-2.0-flash-exp:free",  # محذوف من OpenRouter
+    "openrouter/google/gemini-2.0-flash-exp:free",       # محذوف من OpenRouter
+    "openrouter/mistralai/mistral-7b-instruct:free",     # رد 404 No endpoints found
 }
 
 # رقم إصدار قائمة الأولوية — نرفعه عند كل تحديث جوهري لإجبار التطبيق في قواعد البيانات الموجودة
-_LLM_PRIORITY_VERSION = 4
+_LLM_PRIORITY_VERSION = 5
 
 # قائمة النماذج المجانية فقط — أي نموذج خارج هذه القائمة يُستبدل تلقائياً في القائمة المخزّنة
 _FREE_OPENROUTER_MODELS = {
@@ -311,7 +318,6 @@ _FREE_OPENROUTER_MODELS = {
     "openrouter/deepseek/deepseek-r1:free",
     "openrouter/deepseek/deepseek-chat:free",
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
-    "openrouter/mistralai/mistral-7b-instruct:free",
 }
 
 
@@ -465,6 +471,7 @@ def _migrate_db():
             "ALTER TABLE products ADD COLUMN telegram_post_id VARCHAR(100)",
             "ALTER TABLE products ADD COLUMN x_tweet_id VARCHAR(100)",
             "ALTER TABLE publish_logs ADD COLUMN post_id VARCHAR(100)",
+            "ALTER TABLE discovery_categories ADD COLUMN last_used_date DATE",
         ]
     else:
         column_migrations = [
@@ -473,6 +480,7 @@ def _migrate_db():
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS telegram_post_id VARCHAR(100)",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS x_tweet_id VARCHAR(100)",
             "ALTER TABLE publish_logs ADD COLUMN IF NOT EXISTS post_id VARCHAR(100)",
+            "ALTER TABLE discovery_categories ADD COLUMN IF NOT EXISTS last_used_date DATE",
         ]
 
     # ── فهارس جديدة لتحسين الأداء (تعمل على SQLite و Postgres) ────────────
@@ -482,6 +490,7 @@ def _migrate_db():
         "CREATE INDEX IF NOT EXISTS ix_products_source ON products(source)",
         "CREATE INDEX IF NOT EXISTS ix_publish_logs_product_id ON publish_logs(product_id)",
         "CREATE INDEX IF NOT EXISTS ix_publish_logs_channel ON publish_logs(channel)",
+        "CREATE INDEX IF NOT EXISTS ix_discovery_categories_last_used_date ON discovery_categories(last_used_date)",
     ]
 
     with engine.connect() as conn:

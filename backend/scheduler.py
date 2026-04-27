@@ -68,10 +68,10 @@ async def _process_single_trend(
     auto_approve: bool,
     primary_llm: str,
 ):
-    from backend.config import SessionLocal
+    from backend.config import SessionLocal, get_setting
     from backend.models import Product
     from backend.services.trend_service import extract_product_name_with_ai
-    from backend.services.amazon_service import search_product, is_product_posted_before
+    from backend.services.amazon_service import search_product, has_published_recently
     from backend.services.ai_service import generate_content
     from backend.services.publisher import publish_product
 
@@ -92,8 +92,9 @@ async def _process_single_trend(
         if amazon.get("rating", 0) < min_rating:
             return
 
-        if await is_product_posted_before(amazon["asin"]):
-            logger.info(f"المنتج {amazon['asin']} منشور سابقاً — تخطي")
+        dedup_hours = get_setting("autopilot_dedup_hours", 72)
+        if has_published_recently(amazon["asin"], hours=dedup_hours):
+            logger.info(f"المنتج {amazon['asin']} نُشر خلال آخر {dedup_hours} ساعة — تخطي")
             return
 
         content, model_used = await generate_content(amazon, llm=primary_llm or "auto")
@@ -193,6 +194,120 @@ async def auto_discover_daily():
         logger.error(f"خطأ في الاكتشاف التلقائي: {exc}")
 
 
+# ── Autopilot: 2 تصنيف × 5 منتجات × 3 فترات = 30 منتج/يوم ─────────────────────
+async def run_autopilot_slot():
+    """Slot واحد من الـ autopilot:
+      1) اختر 2 تصنيف لم يُستخدما اليوم
+      2) لكل تصنيف: اجلب أعلى 5 منتجات (مع استبعاد المنشور خلال 72h)
+      3) أنشئ المنتجات بحالة approved في DB
+      4) انشرها بفاصل post_interval_minutes بين كل منشور
+      5) قبل كل نشر: تحقق نهائي من 72h لمنع الـ race
+    """
+    from backend.config import SessionLocal, get_setting
+    from backend.models import Product
+    from backend.services.deals_finder_service import (
+        discover_deals, pick_unused_categories_for_today, mark_categories_used,
+    )
+    from backend.services.amazon_service import (
+        has_published_recently, recent_published_asins,
+    )
+    from backend.services.publisher import publish_product
+    from backend.services.ai_service import generate_content, generate_deal_of_day_content
+
+    if not get_setting("system_enabled", True):
+        logger.info("Autopilot: النظام معطّل — تخطي")
+        return
+    if not get_setting("autopilot_enabled", False):
+        logger.info("Autopilot: غير مفعّل — تخطي")
+        return
+
+    cats_per_slot = int(get_setting("autopilot_cats_per_slot", 2))
+    products_per_cat = int(get_setting("autopilot_products_per_cat", 5))
+    interval_min = int(get_setting("post_interval_minutes", 30))
+    dedup_hours = int(get_setting("autopilot_dedup_hours", 72))
+
+    # ① اختر تصنيفات لم تُستخدم اليوم وعلّمها فوراً (لمنع slot ثانٍ من اختيارها)
+    cats = pick_unused_categories_for_today(cats_per_slot)
+    if not cats:
+        logger.info("Autopilot: لا توجد تصنيفات متاحة لليوم — تم استخدامها كلها")
+        return
+    cat_db_ids = [c["id"] for c in cats]
+    cat_ids = [c["cat_id"] for c in cats]
+    cat_names = [c["name_ar"] for c in cats]
+    mark_categories_used(cat_db_ids)
+    logger.info(f"Autopilot: اختار {cat_names}")
+
+    # ② اجلب الـ ASINs المنشورة مؤخراً مرة واحدة
+    recent = recent_published_asins(hours=dedup_hours)
+    seen_map = {cid: list(recent) for cid in cat_ids}
+
+    # ③ اكتشف العروض
+    try:
+        deals_by_cat = await discover_deals(cat_ids, seen_asins=seen_map)
+    except Exception as exc:
+        logger.error(f"Autopilot: فشل discover_deals: {exc}")
+        return
+
+    # ④ أنشئ المنتجات بحالة approved
+    primary_llm = get_setting("primary_llm", "auto") or "auto"
+    queue: list[tuple[int, str]] = []
+    for cid, deals in deals_by_cat.items():
+        for deal in deals[:products_per_cat]:
+            asin = deal.get("asin", "")
+            if not asin or has_published_recently(asin, hours=dedup_hours):
+                continue
+            try:
+                content, model_used = await generate_content(deal, llm=primary_llm)
+            except Exception as exc:
+                logger.warning(f"Autopilot: فشل توليد محتوى {asin}: {exc}")
+                continue
+            try:
+                with SessionLocal() as db:
+                    product = Product(
+                        title=deal.get("title", ""),
+                        title_ar=deal.get("title", ""),
+                        source="autopilot",
+                        amazon_asin=asin,
+                        amazon_url=deal.get("amazon_url", ""),
+                        affiliate_url=deal.get("affiliate_url", ""),
+                        price_original=deal.get("price_original", 0),
+                        price_current=deal.get("price_current", 0),
+                        discount_pct=deal.get("discount_pct", 0),
+                        rating=deal.get("rating", 0),
+                        rating_count=deal.get("rating_count", 0),
+                        image_url=deal.get("image_url", ""),
+                        ai_content=content,
+                        ai_model_used=model_used,
+                        status="approved",
+                    )
+                    db.add(product)
+                    db.commit()
+                    db.refresh(product)
+                    queue.append((product.id, asin))
+            except Exception as exc:
+                logger.error(f"Autopilot: فشل حفظ المنتج {asin}: {exc}")
+
+    if not queue:
+        logger.warning(f"Autopilot: لم تُنتج أي منتجات قابلة للنشر في {cat_names}")
+        return
+
+    logger.info(f"Autopilot: سينشر {len(queue)} منتج بفاصل {interval_min} دقيقة")
+
+    # ⑤ انشر بفاصل زمني، مع تحقق نهائي قبل كل منشور
+    for i, (pid, asin) in enumerate(queue):
+        if i > 0 and interval_min > 0:
+            await asyncio.sleep(interval_min * 60)
+        if has_published_recently(asin, hours=dedup_hours):
+            logger.info(f"Autopilot: تجاوز ASIN {asin} (نُشر خلال {dedup_hours}h من قبل slot آخر)")
+            continue
+        try:
+            await publish_product(pid)
+        except Exception as exc:
+            logger.error(f"Autopilot: فشل نشر المنتج {pid}: {exc}")
+
+    logger.info(f"Autopilot: انتهى slot ({cat_names})")
+
+
 # ── تنظيف السجلات القديمة ─────────────────────────────────────────────────────────
 async def cleanup_old_records():
     from backend.config import SessionLocal, get_setting
@@ -260,16 +375,26 @@ def setup_scheduler():
         logger.info("Scheduler بدأ")
 
 
+_AUTOPILOT_JOB_IDS = ["autopilot_morning", "autopilot_afternoon", "autopilot_evening"]
+_LEGACY_JOB_IDS = [
+    "fetch_morning", "fetch_afternoon", "fetch_evening",
+    "publish_morning", "publish_afternoon", "publish_evening",
+    "auto_discover",
+]
+
+
 def refresh_schedule():
-    """تحديث مواعيد الجدولة من الإعدادات الحالية"""
+    """تحديث مواعيد الجدولة من الإعدادات الحالية.
+    وضعان:
+      • autopilot_enabled=True  → 3 jobs (autopilot_*) فقط، لا fetch/publish منفصل.
+      • autopilot_enabled=False → السلوك القديم (fetch + publish منفصلان).
+    """
     from backend.config import get_setting
 
     scheduler = get_scheduler()
 
-    # احذف المهام القديمة
-    for job_id in ["fetch_morning", "fetch_afternoon", "fetch_evening",
-                   "publish_morning", "publish_afternoon", "publish_evening",
-                   "auto_discover"]:
+    # احذف كل المهام القديمة (من كلا الوضعين)
+    for job_id in _LEGACY_JOB_IDS + _AUTOPILOT_JOB_IDS:
         try:
             scheduler.remove_job(job_id)
         except Exception:
@@ -279,35 +404,52 @@ def refresh_schedule():
         parts = t.split(":")
         return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
 
-    # مواعيد الجلب + النشر في كل موعد مجدول
-    if get_setting("schedule_morning", True):
-        h, m = parse_time(get_setting("time_morning", "08:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
-                          id="fetch_morning", replace_existing=True)
-        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
-                          id="publish_morning", replace_existing=True)
+    autopilot_on = bool(get_setting("autopilot_enabled", False))
 
-    if get_setting("schedule_afternoon", True):
-        h, m = parse_time(get_setting("time_afternoon", "14:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
-                          id="fetch_afternoon", replace_existing=True)
-        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
-                          id="publish_afternoon", replace_existing=True)
+    if autopilot_on:
+        # ── وضع Autopilot: 3 jobs، كل واحد ينفّذ slot كامل ──
+        slot_specs = [
+            ("autopilot_morning",   "schedule_morning",   "time_morning",   "08:00"),
+            ("autopilot_afternoon", "schedule_afternoon", "time_afternoon", "14:00"),
+            ("autopilot_evening",   "schedule_evening",   "time_evening",   "20:00"),
+        ]
+        for job_id, sched_key, time_key, default_time in slot_specs:
+            if get_setting(sched_key, True):
+                h, m = parse_time(get_setting(time_key, default_time))
+                scheduler.add_job(
+                    run_autopilot_slot, "cron", hour=h, minute=m,
+                    id=job_id, replace_existing=True,
+                    misfire_grace_time=600, coalesce=True,
+                )
+        logger.info("تم تفعيل Autopilot — 3 jobs مجدولة")
+    else:
+        # ── الوضع القديم: fetch + publish منفصلان لكل slot ──
+        if get_setting("schedule_morning", True):
+            h, m = parse_time(get_setting("time_morning", "08:00"))
+            scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                              id="fetch_morning", replace_existing=True)
+            scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                              id="publish_morning", replace_existing=True)
 
-    if get_setting("schedule_evening", True):
-        h, m = parse_time(get_setting("time_evening", "20:00"))
-        scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
-                          id="fetch_evening", replace_existing=True)
-        scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
-                          id="publish_evening", replace_existing=True)
+        if get_setting("schedule_afternoon", True):
+            h, m = parse_time(get_setting("time_afternoon", "14:00"))
+            scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                              id="fetch_afternoon", replace_existing=True)
+            scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                              id="publish_afternoon", replace_existing=True)
 
-    # الاكتشاف التلقائي اليومي (إذا كان مفعّلاً)
-    if get_setting("auto_discover_enabled", False):
-        h, m = parse_time(get_setting("auto_discover_time", "07:00"))
-        scheduler.add_job(auto_discover_daily, "cron", hour=h, minute=m,
-                          id="auto_discover", replace_existing=True)
+        if get_setting("schedule_evening", True):
+            h, m = parse_time(get_setting("time_evening", "20:00"))
+            scheduler.add_job(fetch_and_queue, "cron", hour=h, minute=m,
+                              id="fetch_evening", replace_existing=True)
+            scheduler.add_job(publish_approved_products, "cron", hour=h, minute=m,
+                              id="publish_evening", replace_existing=True)
 
-    logger.info("تم تحديث الجدولة")
+        if get_setting("auto_discover_enabled", False):
+            h, m = parse_time(get_setting("auto_discover_time", "07:00"))
+            scheduler.add_job(auto_discover_daily, "cron", hour=h, minute=m,
+                              id="auto_discover", replace_existing=True)
+        logger.info("تم تحديث الجدولة (الوضع اليدوي)")
 
 
 def stop_scheduler():

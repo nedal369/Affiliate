@@ -34,6 +34,9 @@ def _set_cache(asin: str, data: dict):
 
 # ── فحص ASIN المنشور سابقاً ────────────────────────────────────────────────────
 async def is_product_posted_before(asin: str) -> bool:
+    """[قديم] يتحقق إن كان ASIN موجود بأي وقت بحالة published/approved.
+    استخدم has_published_recently() بدلاً منها للتحقق ضمن نافذة زمنية.
+    """
     from backend.config import SessionLocal
     from backend.models import Product
     with SessionLocal() as db:
@@ -43,6 +46,47 @@ async def is_product_posted_before(asin: str) -> bool:
             .first()
         )
         return existing is not None
+
+
+def has_published_recently(asin: str, hours: int = 72) -> bool:
+    """يتحقق إن كان ASIN قد نُشر بنجاح خلال آخر `hours` ساعة.
+    يستخدم PublishLog.published_at المفهرس → سريع جداً.
+    """
+    from backend.config import SessionLocal
+    from backend.models import Product, PublishLog
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    with SessionLocal() as db:
+        recent = (
+            db.query(PublishLog.id)
+            .join(Product, Product.id == PublishLog.product_id)
+            .filter(
+                Product.amazon_asin == asin,
+                PublishLog.success == True,
+                PublishLog.published_at >= cutoff,
+            )
+            .first()
+        )
+        return recent is not None
+
+
+def recent_published_asins(hours: int = 72) -> set[str]:
+    """يجلب كل الـ ASINs المنشورة بنجاح خلال آخر `hours` ساعة (مرة واحدة)."""
+    from backend.config import SessionLocal
+    from backend.models import Product, PublishLog
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    with SessionLocal() as db:
+        rows = (
+            db.query(Product.amazon_asin)
+            .join(PublishLog, PublishLog.product_id == Product.id)
+            .filter(
+                PublishLog.success == True,
+                PublishLog.published_at >= cutoff,
+                Product.amazon_asin.isnot(None),
+            )
+            .distinct()
+            .all()
+        )
+        return {r[0] for r in rows if r[0]}
 
 
 # ── حساب نسبة الخصم ────────────────────────────────────────────────────────────

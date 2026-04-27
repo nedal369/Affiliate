@@ -324,9 +324,10 @@ function renderQueue() {
         <button class="btn btn-success" onclick="approveProduct(${p.id})">✓ قبول للجدولة</button>
         <button class="btn btn-accent" onclick="publishNow(${p.id})" title="نشر فوري بدون انتظار الجدولة">📤 نشر الآن</button>
         <button class="btn btn-secondary" onclick="editProduct(${p.id})">✎ تعديل</button>
+        <button class="btn btn-secondary" onclick="regenerateContent(${p.id})" title="إعادة توليد النص بالذكاء الاصطناعي">🔄 إعادة توليد النص</button>
         ${p.is_deal_of_day
-          ? `<button class="btn btn-warning btn-sm" onclick="unsetDealOfDay(${p.id})" title="إلغاء عرض اليوم">⭐ إلغاء عرض اليوم</button>`
-          : `<button class="btn btn-secondary btn-sm" onclick="setDealOfDay(${p.id})" title="تعيين كعرض اليوم">⭐ عرض اليوم</button>`
+          ? `<button class="btn btn-warning btn-sm" onclick="unsetDealOfDay(${p.id})" title="إلغاء عرض اليوم — يُعاد توليد النص بالقالب العادي">⭐ إلغاء عرض اليوم</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="setDealOfDay(${p.id})" title="تعيين كعرض اليوم — يُعاد توليد النص بقالب عرض اليوم تلقائياً">⭐ عرض اليوم</button>`
         }
         <button class="btn btn-danger" onclick="rejectProduct(${p.id})">✕ رفض</button>
         <span class="model-tag" style="${(p.ai_model_used || '').startsWith('fallback') ? 'background:rgba(255,149,0,0.15);color:#b45309;' : ''}">🤖 ${p.ai_model_used || 'غير محدد'}</span>
@@ -387,34 +388,65 @@ async function publishNow(id) {
   }
 }
 
+// ── إعادة توليد النص ─────────────────────────────────────────────────────────
+async function regenerateContent(id) {
+  const card = document.getElementById(`product-${id}`);
+  const btn = card?.querySelector('button[onclick^="regenerateContent"]');
+  if (btn) { btn.disabled = true; btn.textContent = '🔄 جاري التوليد...'; }
+  try {
+    const resp = await fetch(`/api/products/${id}/regenerate-content`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.success) {
+      showToast('✓ تم إعادة توليد النص (' + (data.model_used || 'غير محدد') + ')', 'success');
+      await loadQueue();
+    } else {
+      showToast('فشل التوليد: ' + (data.detail || data.error || 'خطأ غير معروف'), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 إعادة توليد النص'; }
+    }
+  } catch (e) {
+    showToast('خطأ: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 إعادة توليد النص'; }
+  }
+}
+
 // ── عرض اليوم ────────────────────────────────────────────────────────────────
 async function setDealOfDay(id) {
+  const card = document.getElementById(`product-${id}`);
+  const btn = card?.querySelector('button[onclick^="setDealOfDay"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري التوليد...'; }
   try {
     const resp = await fetch(`/api/products/${id}/deal-of-day`, { method: 'POST' });
     const data = await resp.json();
     if (data.success) {
-      showToast('⭐ تم تعيينه كعرض اليوم', 'success');
+      showToast('⭐ تم تعيين عرض اليوم وإعادة توليد النص', 'success');
       await loadQueue();
     } else {
-      showToast('خطأ: ' + (data.error || ''), 'error');
+      showToast('خطأ: ' + (data.error || data.detail || ''), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '⭐ عرض اليوم'; }
     }
   } catch (e) {
     showToast('خطأ: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '⭐ عرض اليوم'; }
   }
 }
 
 async function unsetDealOfDay(id) {
+  const card = document.getElementById(`product-${id}`);
+  const btn = card?.querySelector('button[onclick^="unsetDealOfDay"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري التوليد...'; }
   try {
     const resp = await fetch(`/api/products/${id}/deal-of-day`, { method: 'DELETE' });
     const data = await resp.json();
     if (data.success) {
-      showToast('تم إلغاء تعيين عرض اليوم', 'info');
+      showToast('تم إلغاء عرض اليوم وإعادة توليد النص', 'info');
       await loadQueue();
     } else {
-      showToast('خطأ: ' + (data.error || ''), 'error');
+      showToast('خطأ: ' + (data.error || data.detail || ''), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '⭐ إلغاء عرض اليوم'; }
     }
   } catch (e) {
     showToast('خطأ: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '⭐ إلغاء عرض اليوم'; }
   }
 }
 

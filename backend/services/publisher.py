@@ -74,29 +74,64 @@ async def publish_product(product_id: int) -> dict:
 
 # ── تيليغرام ─────────────────────────────────────────────────────────────────────
 async def publish_to_telegram(content: str, image_url: str = "") -> tuple:
-    from backend.config import get_api_key
+    from backend.config import get_api_key, get_setting
     token = get_api_key("telegram_token")
     channel_id = get_api_key("telegram_channel_id")
 
     if not token or not channel_id:
         return False, "مفاتيح Telegram غير مكتملة", None
 
+    # ① ألحق التوقيع (إن لم يكن موجوداً)
+    footer = get_setting("telegram_footer", "") or ""
+    if footer and footer.strip() not in (content or ""):
+        content = (content or "") + footer
+
     import aiohttp
 
     try:
         async with aiohttp.ClientSession() as session:
             if image_url:
+                # ② إن كان المحتوى يتجاوز 1024 → قسّم: caption + رسالة الـ footer منفصلة
+                caption_limit = 1024
+                send_footer_separately = False
+                caption = content
+                if len(content) > caption_limit and footer:
+                    # حاول إرسال الـ caption بدون الـ footer إن كان مع الـ footer زائد
+                    body_only = content[: -len(footer)] if content.endswith(footer) else content
+                    if len(body_only) <= caption_limit:
+                        caption = body_only
+                        send_footer_separately = True
+                    else:
+                        caption = content[:caption_limit]
+                else:
+                    caption = content[:caption_limit]
+
                 url = f"https://api.telegram.org/bot{token}/sendPhoto"
                 payload = {
                     "chat_id": channel_id,
                     "photo": image_url,
-                    "caption": content[:1024],
+                    "caption": caption,
                     "parse_mode": "HTML",
                 }
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     data = await resp.json()
                     if data.get("ok"):
                         msg_id = str(data.get("result", {}).get("message_id", ""))
+                        # ③ أرسل الـ footer كرسالة منفصلة إن لزم
+                        if send_footer_separately:
+                            try:
+                                await session.post(
+                                    f"https://api.telegram.org/bot{token}/sendMessage",
+                                    json={
+                                        "chat_id": channel_id,
+                                        "text": footer.strip(),
+                                        "parse_mode": "HTML",
+                                        "disable_web_page_preview": True,
+                                    },
+                                    timeout=aiohttp.ClientTimeout(total=10),
+                                )
+                            except Exception as fexc:
+                                logger.warning(f"فشل إرسال footer منفصل: {fexc}")
                         return True, None, msg_id
                     logger.warning(f"فشل إرسال الصورة لـ Telegram: {data.get('description')}")
 

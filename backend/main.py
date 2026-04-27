@@ -105,8 +105,8 @@ if FRONTEND_DIR.exists():
 # ── Auth Middleware ───────────────────────────────────────────────────────────────
 # المسارات العامة التي لا تحتاج تسجيل دخول
 _PUBLIC_PATHS = {
-    "/login", "/register",
-    "/api/auth/login", "/api/auth/register",
+    "/login",
+    "/api/auth/login",
     "/api/health",
 }
 _PUBLIC_PREFIXES = ("/static/",)
@@ -189,15 +189,6 @@ async def login_page():
     return JSONResponse({"error": "login.html غير موجود"}, status_code=404)
 
 
-# ── صفحة التسجيل (مسار عام، اختياري — للنشر مع لوحة الأدمن المركزية) ──────
-@app.get("/register")
-async def register_page():
-    register_html = FRONTEND_DIR / "register.html"
-    if register_html.exists():
-        return FileResponse(str(register_html))
-    return JSONResponse({"error": "register.html غير موجود"}, status_code=404)
-
-
 # ── الصفحة الرئيسية (محمية) ───────────────────────────────────────────────────
 @app.get("/")
 async def root():
@@ -249,95 +240,6 @@ async def logout(request: Request, response: Response):
         _token_cache.pop(token, None)
     response.delete_cookie("access_token")
     return {"success": True}
-
-
-# ── تسجيل ذاتي (للـ SaaS — إن فُعّل) ─────────────────────────────────────
-class RegisterBody(BaseModel):
-    name: str
-    email: str
-    password: str
-    plan: str = "free"
-
-
-@app.post("/api/auth/register")
-@_login_rate_limit  # نفس rate limit الـ login لمنع spam
-async def register(request: Request, body: RegisterBody):
-    """تسجيل ذاتي — يُسجّل العميل في master DB ويُطلق provisioning في الخلفية.
-    يعمل فقط إذا كان MASTER_DATABASE_URL مضبوطاً (وضع SaaS).
-    """
-    if not os.getenv("MASTER_DATABASE_URL"):
-        raise HTTPException(503, "التسجيل الذاتي غير مفعّل في هذه instance")
-
-    # تحقق أساسي
-    name = (body.name or "").strip()
-    email = (body.email or "").strip().lower()
-    password = body.password or ""
-    if len(name) < 2:
-        raise HTTPException(400, "الاسم قصير جداً")
-    if "@" not in email or len(email) > 255:
-        raise HTTPException(400, "البريد الإلكتروني غير صالح")
-    if len(password) < 8:
-        raise HTTPException(400, "كلمة المرور يجب أن تكون 8 أحرف على الأقل")
-
-    try:
-        from admin_panel.models import (
-            Client, MasterSession, init_master_db, SUBSCRIPTION_PLANS,
-        )
-        from passlib.context import CryptContext
-    except ImportError:
-        raise HTTPException(503, "نظام إدارة العملاء غير مثبّت")
-
-    if body.plan not in SUBSCRIPTION_PLANS:
-        raise HTTPException(400, f"خطة غير صالحة: {body.plan}")
-
-    init_master_db()
-    ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    pw_hash = ctx.hash(password)
-
-    with MasterSession() as db:
-        existing = db.query(Client).filter(Client.email == email).first()
-        if existing:
-            raise HTTPException(409, "البريد الإلكتروني مسجّل مسبقاً")
-
-        client = Client(
-            name=name,
-            email=email,
-            password_hash=pw_hash,
-            plan=body.plan,
-            status="pending",   # سيصبح active بعد اكتمال provisioning
-            monthly_fee=SUBSCRIPTION_PLANS[body.plan]["price_usd"],
-        )
-        db.add(client)
-        db.commit()
-        db.refresh(client)
-        client_id = client.id
-
-    # إطلاق provisioning في الخلفية (لا ننتظره)
-    asyncio.create_task(_provision_client_async(name, email, body.plan))
-
-    logger.info(f"تسجيل عميل جديد #{client_id}: {email} (plan={body.plan})")
-    return {"success": True, "client_id": client_id}
-
-
-async def _provision_client_async(name: str, email: str, plan: str):
-    """يُشغّل سكريبت إنشاء instance على Render في الخلفية."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "python", "scripts/create_client.py",
-            "--client-name", name,
-            "--email", email,
-            "--plan", plan,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(BASE_DIR),
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode == 0:
-            logger.info(f"✓ provisioning نجح لـ {email}")
-        else:
-            logger.error(f"provisioning فشل لـ {email}: {stderr.decode(errors='replace')[:500]}")
-    except Exception as exc:
-        logger.error(f"خطأ في provisioning لـ {email}: {exc}")
 
 
 @app.get("/api/auth/me")
@@ -503,9 +405,31 @@ def _user_to_dict(u) -> dict:
 async def get_stats():
     from backend.services.tracker import get_today_stats
     from backend.config import get_setting
+    from backend.services.telegram_stats import get_subscriber_count
     stats = await get_today_stats()
     stats["system_enabled"] = get_setting("system_enabled", True)
+    stats["autopilot_enabled"] = get_setting("autopilot_enabled", False)
+    # عدد مشتركي قناة تلقرام (cached 5 دقائق داخلياً)
+    try:
+        tg = await get_subscriber_count()
+        stats["telegram_subscribers"] = tg.get("count", 0)
+        stats["telegram_subscribers_ok"] = tg.get("ok", False)
+    except Exception:
+        stats["telegram_subscribers"] = 0
+        stats["telegram_subscribers_ok"] = False
     return stats
+
+
+@app.get("/api/telegram/stats")
+async def telegram_stats():
+    """تفاصيل قناة تلقرام: عدد المشتركين + معلومات القناة."""
+    from backend.services.telegram_stats import get_subscriber_count, get_chat_info
+    subs = await get_subscriber_count()
+    info = await get_chat_info()
+    return {
+        "subscribers": subs,
+        "chat": info,
+    }
 
 
 # ── قائمة الانتظار ────────────────────────────────────────────────────────────────
@@ -663,9 +587,63 @@ async def queue_schedule_info():
 
 
 # ── عرض اليوم ─────────────────────────────────────────────────────────────────
+def _product_to_data(product) -> dict:
+    return {
+        "title": product.title,
+        "price_original": product.price_original,
+        "price_current": product.price_current,
+        "discount_pct": product.discount_pct,
+        "rating": product.rating,
+        "rating_count": product.rating_count,
+        "affiliate_url": product.affiliate_url or "",
+    }
+
+
+async def _regenerate_for_product(product_id: int, as_deal_of_day: bool) -> dict:
+    """يُعيد توليد محتوى المنتج بحسب نوعه (deal أو regular)."""
+    from backend.config import SessionLocal
+    from backend.models import Product
+    from backend.services.ai_service import generate_content, generate_deal_of_day_content
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        product_data = _product_to_data(product)
+
+    if as_deal_of_day:
+        content, model_used = await generate_deal_of_day_content(product_data)
+    else:
+        content, model_used = await generate_content(product_data)
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if product:
+            product.ai_content = content
+            product.ai_model_used = model_used
+            db.commit()
+
+    return {"success": True, "content": content, "model_used": model_used}
+
+
+@app.post("/api/products/{product_id}/regenerate-content")
+async def regenerate_content_endpoint(product_id: int):
+    """يُعيد توليد نص المنتج حسب نوعه الحالي (regular أو deal-of-day)."""
+    from backend.config import SessionLocal
+    from backend.models import Product
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        if not product:
+            raise HTTPException(404, "المنتج غير موجود")
+        is_deal = bool(product.is_deal_of_day)
+
+    return await _regenerate_for_product(product_id, as_deal_of_day=is_deal)
+
+
 @app.post("/api/products/{product_id}/deal-of-day")
 async def set_deal_of_day(product_id: int):
-    """تعيين منتج كعرض اليوم — يلغي عرض اليوم السابق تلقائياً"""
+    """تعيين منتج كعرض اليوم + إعادة توليد النص بقالب الـ deal تلقائياً."""
     from backend.config import SessionLocal
     from backend.models import Product
 
@@ -676,12 +654,15 @@ async def set_deal_of_day(product_id: int):
             raise HTTPException(404, "المنتج غير موجود")
         product.is_deal_of_day = True
         db.commit()
-    return {"success": True, "message": "تم تعيين عرض اليوم"}
+
+    # إعادة توليد النص بقالب deal-of-day تلقائياً
+    result = await _regenerate_for_product(product_id, as_deal_of_day=True)
+    return {"success": True, "message": "تم تعيين عرض اليوم وإعادة توليد النص", **result}
 
 
 @app.delete("/api/products/{product_id}/deal-of-day")
 async def unset_deal_of_day(product_id: int):
-    """إلغاء تعيين عرض اليوم"""
+    """إلغاء تعيين عرض اليوم + إعادة توليد النص بالقالب العادي تلقائياً."""
     from backend.config import SessionLocal
     from backend.models import Product
 
@@ -691,39 +672,16 @@ async def unset_deal_of_day(product_id: int):
             raise HTTPException(404, "المنتج غير موجود")
         product.is_deal_of_day = False
         db.commit()
-    return {"success": True}
+
+    # إعادة توليد النص بالقالب العادي
+    result = await _regenerate_for_product(product_id, as_deal_of_day=False)
+    return {"success": True, "message": "تم إلغاء عرض اليوم وإعادة توليد النص", **result}
 
 
 @app.post("/api/products/{product_id}/regenerate-deal-of-day")
 async def regenerate_deal_of_day_content(product_id: int):
-    """توليد محتوى خاص بعرض اليوم — أكثر إثارة وعجلة"""
-    from backend.config import SessionLocal
-    from backend.models import Product
-    from backend.services.ai_service import generate_deal_of_day_content
-
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product_data = {
-            "title": product.title,
-            "price_original": product.price_original,
-            "price_current": product.price_current,
-            "discount_pct": product.discount_pct,
-            "rating": product.rating,
-            "rating_count": product.rating_count,
-            "affiliate_url": product.affiliate_url or "",
-        }
-
-    content, model_used = await generate_deal_of_day_content(product_data)
-
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        product.ai_content = content
-        product.ai_model_used = model_used
-        db.commit()
-
-    return {"success": True, "content": content, "model_used": model_used}
+    """[توافقية] يُعيد توليد محتوى deal-of-day صراحةً."""
+    return await _regenerate_for_product(product_id, as_deal_of_day=True)
 
 
 # ── الاكتشاف التلقائي ──────────────────────────────────────────────────────────
