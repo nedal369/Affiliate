@@ -165,8 +165,12 @@ USER_PROMPT_TEMPLATE = """اكتب بوست تسويقي لهذا المنتج:
 السعر الأصلي: {price_original} ريال
 السعر الحالي: {price_current} ريال
 الخصم: {discount_pct}%
-التقييم: {rating}/5 ({rating_count} تقييم)
-الرابط: {affiliate_url}
+{rating_line}{offers_block}الرابط: {affiliate_url}
+
+ملاحظات مهمة:
+- {rating_instruction}
+- {offers_instruction}
+- اختم بسطر يوجّه القارئ لقناة العروض على تيليغرام: {telegram_link}
 
 أضف في نهاية البوست: {affiliate_url}"""
 
@@ -177,12 +181,10 @@ FALLBACK_TEMPLATE = """🛒 عرض مميز لا تفوّته!
 💰 السعر الأصلي: {price_original} ريال
 🔥 السعر الحالي: {price_current} ريال
 📉 خصم {discount_pct}%
-
-⭐ التقييم: {rating}/5 ({rating_count} تقييم)
-
+{rating_block}{offers_block}
 🔗 اطلبه الآن: {affiliate_url}
 
-#تسوق_أونلاين #عروض_أمازون #خصومات"""
+#تسوق_أونلاين #عروض_أمازون #خصومات{telegram_footer}"""
 
 DEAL_OF_DAY_SYSTEM = """أنت كاتب محتوى تسويقي محترف متخصص في منتجات أمازون للسوق السعودي.
 مهمتك: كتابة بوست استثنائي لـ "عرض اليوم" — العرض الأقوى والأبرز يومياً.
@@ -194,14 +196,15 @@ DEAL_OF_DAY_PROMPT = """اكتب بوست "عرض اليوم" لهذا المن�
 السعر الأصلي: {price_original} ريال
 السعر الحالي: {price_current} ريال
 الخصم: {discount_pct}% (توفير {saving} ريال)
-التقييم: {rating}/5 ({rating_count} تقييم)
-
+{rating_line}{offers_block}
 المطلوب:
 - 🌟 ابدأ بـ "⭐ عرض اليوم فقط!" بشكل بارز ومميز
 - أبرز قيمة التوفير بالريال: "وفّر {saving} ريال اليوم!"
 - أضف إحساساً بالعجلة: "العرض محدود - لا تتأخر!"
 - اذكر 4 مميزات رئيسية قوية بأسلوب نقاط
-- اختم بـ CTA قوي وعاجل
+- {rating_instruction}
+- {offers_instruction}
+- اختم بـ CTA قوي وعاجل ووجّه القارئ لقناة العروض: {telegram_link}
 - الطول: 200-250 كلمة
 - اللهجة: متحمسة لكن مهنية
 
@@ -217,39 +220,33 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 📉 خصم {discount_pct}% — توفير {saving} ريال!
 
 ⏰ العرض محدود — لا تتأخر!
-
-⭐ التقييم: {rating}/5 من {rating_count} مشترٍ
-
+{rating_block}{offers_block}
 🛒 اطلبه الآن قبل نفاد الكمية:
 {affiliate_url}
 
-#عرض_اليوم #أفضل_عرض #أمازون_السعودية"""
+#عرض_اليوم #أفضل_عرض #أمازون_السعودية{telegram_footer}"""
 
 
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
-# قائمة النماذج المسموح بها — OpenRouter المجانية فقط
-# (Mistral 7B :free حُذف بعد deprecate من OpenRouter — كان يُرجع 404 No endpoints found)
-_FREE_OPENROUTER_ONLY = {
+# نماذج OpenRouter المجانية — تُستخدم كـ fallback افتراضي عند عدم ضبط أي شيء
+_FREE_OPENROUTER_DEFAULTS = [
     "openrouter/meta-llama/llama-3.3-70b-instruct:free",
     "openrouter/deepseek/deepseek-r1:free",
     "openrouter/deepseek/deepseek-chat:free",
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
-}
+]
 
 
 def _build_model_priority(custom_system: bool = False) -> list[str]:
     """
     يبني قائمة النماذج الجاهزة بناءً على المفاتيح المضبوطة فعلاً.
-    مقيّد بنماذج OpenRouter المجانية فقط — أي نموذج آخر مرفوض حتى لو كان في الإعدادات.
+    يقبل أي نموذج موجود في SUPPORTED_MODELS طالما مفتاح مزوّده مضبوط.
     """
     from backend.config import get_api_key, get_setting
 
     primary = get_setting("primary_llm", "")
     saved_list = get_setting("llm_priority", [])
-
-    def is_allowed(model_id: str) -> bool:
-        return model_id in _FREE_OPENROUTER_ONLY
 
     def key_available(model_id: str) -> bool:
         info = SUPPORTED_MODELS.get(model_id)
@@ -260,23 +257,18 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 
     ordered: list[str] = []
 
-    # ① النموذج الأساسي أولاً إذا كان مسموحاً ومفتاحه موجود
-    if primary and is_allowed(primary) and key_available(primary):
+    # ① النموذج الأساسي الذي اختاره المستخدم — أولوية قصوى إذا مفتاحه موجود
+    if primary and primary in SUPPORTED_MODELS and key_available(primary):
         ordered.append(primary)
 
-    # ② قائمة الأولوية المحفوظة — مع تصفية النماذج غير المجانية
+    # ② قائمة الأولوية المحفوظة كـ fallback
     for mid in (saved_list if isinstance(saved_list, list) else []):
-        if mid not in ordered and is_allowed(mid) and key_available(mid):
+        if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
             ordered.append(mid)
 
     # ③ إذا لم يُضبط شيء — أضف كل نماذج OpenRouter المجانية المتاحة بترتيب ثابت
     if not ordered:
-        for mid in [
-            "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-            "openrouter/deepseek/deepseek-r1:free",
-            "openrouter/deepseek/deepseek-chat:free",
-            "openrouter/qwen/qwen-2.5-72b-instruct:free",
-        ]:
+        for mid in _FREE_OPENROUTER_DEFAULTS:
             if mid in SUPPORTED_MODELS and key_available(mid):
                 ordered.append(mid)
 
@@ -464,6 +456,82 @@ def _short_error(exc: Exception, max_len: int = 60) -> str:
     return msg[:max_len] + "…" if len(msg) > max_len else msg
 
 
+def _telegram_channel_link() -> str:
+    """يستخرج رابط قناة تيليغرام من الإعدادات (للعرض داخل المحتوى)."""
+    try:
+        from backend.config import get_setting
+        footer = get_setting("telegram_footer", "") or ""
+        import re
+        m = re.search(r"https?://t\.me/[^\s]+", footer)
+        if m:
+            return m.group(0)
+    except Exception:
+        pass
+    return ""
+
+
+def _telegram_footer_block() -> str:
+    """نص footer كامل (مع سطر فاصل) ليُلحق بنهاية المنشور — أو فارغ إن لم يُضبط."""
+    try:
+        from backend.config import get_setting
+        footer = (get_setting("telegram_footer", "") or "").rstrip()
+        if footer:
+            if not footer.startswith("\n"):
+                footer = "\n\n" + footer.lstrip("\n")
+            return footer
+    except Exception:
+        pass
+    return ""
+
+
+def _rating_line(product: dict) -> str:
+    """سطر التقييم للـ prompt — يُحذف إذا عدد التقييمات صفر."""
+    rc = int(product.get("rating_count") or 0)
+    rating = product.get("rating") or 0
+    if rc <= 0 or not rating:
+        return ""
+    return f"التقييم: {rating}/5 ({rc} تقييم)\n"
+
+
+def _rating_block(product: dict) -> str:
+    """كتلة التقييم للـ fallback template — تُحذف إذا عدد التقييمات صفر."""
+    rc = int(product.get("rating_count") or 0)
+    rating = product.get("rating") or 0
+    if rc <= 0 or not rating:
+        return ""
+    return f"\n⭐ التقييم: {rating}/5 ({rc} تقييم)\n"
+
+
+def _offers_block_for_prompt(product: dict) -> str:
+    offers = product.get("offers") or []
+    if not offers:
+        return ""
+    lines = "\n".join(f"- {o}" for o in offers if o)
+    return f"عروض إضافية متاحة:\n{lines}\n"
+
+
+def _offers_block_for_fallback(product: dict) -> str:
+    offers = product.get("offers") or []
+    if not offers:
+        return ""
+    lines = "\n".join(f"💳 {o}" for o in offers if o)
+    return f"\n{lines}\n"
+
+
+def _rating_instruction(product: dict) -> str:
+    rc = int(product.get("rating_count") or 0)
+    if rc <= 0:
+        return "لا تذكر التقييم في البوست (عدد المراجعات صفر)"
+    return "اذكر التقييم باختصار في مكان مناسب"
+
+
+def _offers_instruction(product: dict) -> str:
+    offers = product.get("offers") or []
+    if not offers:
+        return "لا توجد عروض إضافية للذكر"
+    return "اذكر العروض الإضافية أعلاه (مثل سعر برايم أو خصم البنوك) إن كانت موجودة"
+
+
 async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
     """
     يولّد محتوى عربي للمنتج.
@@ -475,8 +543,11 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         price_original=product.get("price_original", 0),
         price_current=product.get("price_current", 0),
         discount_pct=product.get("discount_pct", 0),
-        rating=product.get("rating", 0),
-        rating_count=product.get("rating_count", 0),
+        rating_line=_rating_line(product),
+        offers_block=_offers_block_for_prompt(product),
+        rating_instruction=_rating_instruction(product),
+        offers_instruction=_offers_instruction(product),
+        telegram_link=_telegram_channel_link() or "(لم تُضبط)",
         affiliate_url=product.get("affiliate_url", ""),
     )
 
@@ -552,9 +623,10 @@ def _make_fallback(product: dict) -> str:
         price_original=product.get("price_original", 0),
         price_current=product.get("price_current", 0),
         discount_pct=product.get("discount_pct", 0),
-        rating=product.get("rating", 0),
-        rating_count=product.get("rating_count", 0),
+        rating_block=_rating_block(product),
+        offers_block=_offers_block_for_fallback(product),
         affiliate_url=product.get("affiliate_url", ""),
+        telegram_footer=_telegram_footer_block(),
     )
 
 
@@ -570,8 +642,11 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         price_current=product.get("price_current", 0),
         discount_pct=product.get("discount_pct", 0),
         saving=saving,
-        rating=product.get("rating", 0),
-        rating_count=product.get("rating_count", 0),
+        rating_line=_rating_line(product),
+        offers_block=_offers_block_for_prompt(product),
+        rating_instruction=_rating_instruction(product),
+        offers_instruction=_offers_instruction(product),
+        telegram_link=_telegram_channel_link() or "(لم تُضبط)",
         affiliate_url=product.get("affiliate_url", ""),
     )
 
@@ -613,9 +688,10 @@ def _make_deal_of_day_fallback(product: dict) -> str:
         price_current=product.get("price_current", 0),
         discount_pct=product.get("discount_pct", 0),
         saving=saving,
-        rating=product.get("rating", 0),
-        rating_count=product.get("rating_count", 0),
+        rating_block=_rating_block(product),
+        offers_block=_offers_block_for_fallback(product),
         affiliate_url=product.get("affiliate_url", ""),
+        telegram_footer=_telegram_footer_block(),
     )
 
 

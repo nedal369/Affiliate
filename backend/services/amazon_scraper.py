@@ -374,7 +374,89 @@ def _parse_product_html(html: str) -> dict:
         if src and "http" in src:
             result["image_url"] = src
 
+    # العروض الإضافية: برايم / خصم البنوك / كوبونات / عروض خاصة
+    offers = _parse_offers(soup)
+    if offers:
+        result["offers"] = offers
+
     return result
+
+
+# ── Offers extraction (Prime price, bank discounts, coupons, promotions) ────────
+def _parse_offers(soup) -> list[str]:
+    """يجمع العروض المتاحة على صفحة المنتج كنصوص قصيرة."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(label: str, raw: str):
+        text = re.sub(r"\s+", " ", (raw or "").strip())
+        if not text or len(text) < 3 or len(text) > 220:
+            return
+        key = text.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(f"{label}: {text}" if label else text)
+
+    # ① سعر برايم الحصري
+    for sel in [
+        "#primeExclusivePrice_feature_div",
+        "[id*='primeExclusive']",
+        ".priceToPayPaddingTop",
+        "[data-feature-name='primeExclusivePrice']",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            txt = el.get_text(" ", strip=True)
+            if txt and ("prime" in txt.lower() or "برايم" in txt):
+                add("سعر برايم", txt[:180])
+                break
+
+    # ② خصم البنوك / الدفع الفوري
+    for sel in [
+        "#itembox-InstantBankDiscount",
+        "[id*='InstantBankDiscount']",
+        "[id*='bankOffer']",
+        "[data-feature-name='bankOffers']",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            txt = el.get_text(" ", strip=True)
+            if txt:
+                add("خصم البنوك", txt[:180])
+                break
+
+    # ③ الكوبونات
+    for sel in [
+        ".couponLabelText",
+        "[id*='couponBadge']",
+        ".promoMessageBadgePromotion",
+        "#promoPriceBlockMessage_feature_div",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            txt = el.get_text(" ", strip=True)
+            if txt:
+                add("كوبون", txt[:180])
+                break
+
+    # ④ قائمة العروض المتاحة العامة
+    for sel in [
+        "#applicablePromotionList_feature_div",
+        "#vsx-offers-aod-pinned-offer",
+        "[data-feature-name='promotions']",
+        ".specialOfferText",
+    ]:
+        for el in soup.select(sel):
+            txt = el.get_text(" ", strip=True)
+            if txt and len(txt) >= 8:
+                add("", txt[:180])
+                if len(found) >= 5:
+                    break
+        if len(found) >= 5:
+            break
+
+    return found[:5]
 
 
 # ── Search result parser ──────────────────────────────────────────────────────────
@@ -603,6 +685,7 @@ async def get_product_by_asin(
         "image_url": merged.get("image_url", ""),
         "amazon_url": f"https://{domain}/dp/{asin}",
         "affiliate_url": _affiliate_url(asin, marketplace),
+        "offers": merged.get("offers", []),
         "source": "scraper",
     }
 

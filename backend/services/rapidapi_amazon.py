@@ -117,6 +117,34 @@ def _parse_product_offers_response(data: dict, asin: str, marketplace: str = "SA
         domain = domain_map.get(marketplace, "amazon.sa")
         amazon_url = inner.get("product_url") or f"https://www.{domain}/dp/{asin}"
 
+        # العروض الإضافية (برايم، خصم البنوك، الكوبونات...) إن أرجعها الـ API
+        offers: list[str] = []
+        raw_offers = (
+            inner.get("product_offers")
+            or inner.get("offers")
+            or inner.get("deal_badges")
+            or []
+        )
+        if isinstance(raw_offers, list):
+            for o in raw_offers[:5]:
+                if isinstance(o, str):
+                    offers.append(o.strip())
+                elif isinstance(o, dict):
+                    txt = (
+                        o.get("offer_text")
+                        or o.get("text")
+                        or o.get("description")
+                        or o.get("title")
+                        or ""
+                    )
+                    if txt:
+                        offers.append(str(txt).strip())
+        if inner.get("coupon_text"):
+            offers.append(f"كوبون: {inner['coupon_text']}")
+        if inner.get("is_prime") and inner.get("product_price"):
+            offers.append(f"متاح عبر برايم: {inner['product_price']}")
+        offers = [o for o in offers if o][:5]
+
         return {
             "asin":           asin,
             "title":          title,
@@ -128,6 +156,7 @@ def _parse_product_offers_response(data: dict, asin: str, marketplace: str = "SA
             "rating":         rating,
             "rating_count":   rating_count,
             "image_url":      image_url,
+            "offers":         offers,
             "source":         "rapidapi",
         }
     except Exception as exc:
