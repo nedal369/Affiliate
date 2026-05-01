@@ -217,6 +217,8 @@ ENV_VAR_MAP: dict[str, str] = {
     "openrouter":           "OPENROUTER_API_KEY",
     # قاعدة بيانات Supabase
     "supabase_db_url":      "DATABASE_URL",
+    "supabase_url":         "SUPABASE_URL",
+    "supabase_anon_key":    "SUPABASE_ANON_KEY",
 }
 
 

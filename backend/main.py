@@ -785,7 +785,7 @@ async def save_settings(request: Request, body: dict = Body(...)):
 KNOWN_SERVICES = [
     "anthropic", "openai", "google", "groq",
     "openrouter",
-    "supabase_db_url",
+    "supabase_db_url", "supabase_url", "supabase_anon_key",
     "amazon_access_key", "amazon_secret_key", "amazon_associate_tag",
     "rapidapi_key",
     "apify",
@@ -958,6 +958,27 @@ async def test_key(service: str):
             version = await asyncio.to_thread(_check)
             test_engine.dispose()
             return {"success": True, "message": f"متصل ✓ — {version}"}
+        except Exception as e:
+            return {"success": False, "message": f"فشل الاتصال: {e}"}
+
+    elif service in ("supabase_url", "supabase_anon_key"):
+        # اختبار يجمع كلا المفتاحين معاً
+        from backend.config import get_api_key as _gak
+        supabase_url = _gak("supabase_url") or ""
+        supabase_key = _gak("supabase_anon_key") or ""
+        if not supabase_url or not supabase_key:
+            return {"success": False, "message": "يجب حفظ رابط المشروع ومفتاح الـ API معاً قبل الاختبار"}
+        supabase_url = supabase_url.rstrip("/")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{supabase_url}/rest/v1/",
+                    headers={"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"},
+                )
+            if resp.status_code < 400:
+                return {"success": True, "message": "متصل ✓ — Supabase REST API جاهز"}
+            return {"success": False, "message": f"استجابة HTTP {resp.status_code}: {resp.text[:120]}"}
         except Exception as e:
             return {"success": False, "message": f"فشل الاتصال: {e}"}
 
