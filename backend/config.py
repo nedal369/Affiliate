@@ -46,6 +46,9 @@ if _DB_URL_ENV:
     # Render و Heroku يُصدران postgres:// لكن SQLAlchemy 2.x يحتاج postgresql://
     if _DB_URL_ENV.startswith("postgres://"):
         _DB_URL_ENV = _DB_URL_ENV.replace("postgres://", "postgresql://", 1)
+    # نستخدم psycopg3 (psycopg) لأن psycopg2-binary لا يدعم Python 3.14 على Render
+    if _DB_URL_ENV.startswith("postgresql://") and "+psycopg" not in _DB_URL_ENV:
+        _DB_URL_ENV = _DB_URL_ENV.replace("postgresql://", "postgresql+psycopg://", 1)
     _DB_URL_ENV = _ensure_ssl(_DB_URL_ENV)
     DATABASE_URL = _DB_URL_ENV
     IS_SQLITE = DATABASE_URL.startswith("sqlite")

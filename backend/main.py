@@ -939,6 +939,8 @@ async def test_key(service: str):
             from sqlalchemy import create_engine, text
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
+            if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
+                db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
             if "sslmode" not in db_url and ("supabase.co" in db_url or "supabase.com" in db_url):
                 sep = "&" if "?" in db_url else "?"
                 db_url += f"{sep}sslmode=require"
