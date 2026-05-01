@@ -26,12 +26,27 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 # الأولوية:
 #   1) DATABASE_URL (PostgreSQL خارجي — يضمن استمرار البيانات على Render)
 #   2) SQLite محلي على نفس الخادم (يضيع عند كل deploy على Render Free)
-_DB_URL_ENV = os.getenv("DATABASE_URL", "").strip()
+_DB_URL_ENV = (
+    os.getenv("DATABASE_URL", "").strip()
+    or os.getenv("SUPABASE_DB_URL", "").strip()
+)
+
+
+def _ensure_ssl(url: str) -> str:
+    """Supabase يشترط SSL — أضفه إن لم يكن موجوداً."""
+    if "sslmode" in url:
+        return url
+    if "supabase.co" in url or "supabase.com" in url:
+        sep = "&" if "?" in url else "?"
+        return url + f"{sep}sslmode=require"
+    return url
+
 
 if _DB_URL_ENV:
     # Render و Heroku يُصدران postgres:// لكن SQLAlchemy 2.x يحتاج postgresql://
     if _DB_URL_ENV.startswith("postgres://"):
         _DB_URL_ENV = _DB_URL_ENV.replace("postgres://", "postgresql://", 1)
+    _DB_URL_ENV = _ensure_ssl(_DB_URL_ENV)
     DATABASE_URL = _DB_URL_ENV
     IS_SQLITE = DATABASE_URL.startswith("sqlite")
     if IS_SQLITE:
@@ -197,6 +212,8 @@ ENV_VAR_MAP: dict[str, str] = {
     # بدائل بدون Amazon PA API
     "rapidapi_key":         "RAPIDAPI_KEY",
     "openrouter":           "OPENROUTER_API_KEY",
+    # قاعدة بيانات Supabase
+    "supabase_db_url":      "DATABASE_URL",
 }
 
 
