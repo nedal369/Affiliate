@@ -279,7 +279,6 @@ DEFAULT_SETTINGS = {
         "openrouter/meta-llama/llama-3.3-70b-instruct:free",
         "openrouter/deepseek/deepseek-r1:free",
         "openrouter/deepseek/deepseek-chat:free",
-        "openrouter/qwen/qwen-2.5-72b-instruct:free",
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
@@ -307,10 +306,11 @@ DEFAULT_SETTINGS = {
 _DEPRECATED_MODELS = {
     "openrouter/google/gemini-2.0-flash-exp:free",       # محذوف من OpenRouter
     "openrouter/mistralai/mistral-7b-instruct:free",     # رد 404 No endpoints found
+    "openrouter/qwen/qwen-2.5-72b-instruct:free",        # رد 404 No endpoints found
 }
 
 # رقم إصدار قائمة الأولوية — نرفعه عند كل تحديث جوهري لإجبار التطبيق في قواعد البيانات الموجودة
-_LLM_PRIORITY_VERSION = 5
+_LLM_PRIORITY_VERSION = 6
 
 # قائمة النماذج المجانية فقط — أي نموذج خارج هذه القائمة يُستبدل تلقائياً في القائمة المخزّنة
 _FREE_OPENROUTER_MODELS = {
