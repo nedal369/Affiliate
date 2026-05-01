@@ -692,11 +692,11 @@
     // ⑤ تحميل الصفحة الافتراضية
     navigateTo('dashboard');
 
-    // ⑥ تحديث دوري كل دقيقة
-    setInterval(async () => {
+    // ⑥ تحديث دوري كل 90 ثانية — لكن فقط عندما يكون التبويب مرئياً
+    async function refreshStatsBadge() {
+      if (document.visibilityState !== 'visible') return;
       try {
         const stats = await fetch('/api/stats').then(r => r.json());
-        // إذا انتهت الجلسة → وجّه لصفحة الدخول
         if (!stats || stats.detail === 'غير مصادق عليه') {
           window.location.href = '/login';
           return;
@@ -709,7 +709,12 @@
           badge.classList.add('hidden');
         }
       } catch (e) {}
-    }, 60000);
+    }
+    setInterval(refreshStatsBadge, 90000);
+    // عند العودة للتبويب — حدّث فوراً مرة واحدة
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshStatsBadge();
+    });
   }
 
   init();

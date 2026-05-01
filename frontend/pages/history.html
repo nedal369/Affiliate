@@ -113,7 +113,7 @@ async function loadHistory() {
         <tr>
           <td>
             <div class="flex items-center gap-2">
-              ${p.image_url ? `<img src="${p.image_url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : ''}
+              ${p.image_url ? `<img src="${p.image_url}" loading="lazy" decoding="async" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : ''}
               <span class="truncate" style="max-width:180px;" title="${p.title}">${p.title_ar || p.title}</span>
             </div>
           </td>

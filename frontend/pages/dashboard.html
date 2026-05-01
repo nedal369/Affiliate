@@ -100,30 +100,32 @@
 </div>
 
 <script>
-// ── الوقت الحي ─────────────────────────────────────────────────────────────
+// ── الوقت الحي — تحديث كل 30 ثانية فقط (الدقائق هي أعلى دقّة في النص) ─────
+let _lastClockMinute = -1;
 function updateClock() {
+  const now = new Date();
+  if (now.getMinutes() === _lastClockMinute) return;  // لا DOM write إذا لم تتغيّر الدقيقة
+  _lastClockMinute = now.getMinutes();
   const el = document.getElementById('dashboard-datetime');
   if (el) {
-    el.textContent = new Date().toLocaleString('ar', {
+    el.textContent = now.toLocaleString('ar', {
       weekday: 'long', year: 'numeric', month: 'long',
       day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   }
 }
 updateClock();
-setInterval(updateClock, 1000);
+setInterval(updateClock, 30000);
 
 // ── تحميل الإحصاءات ─────────────────────────────────────────────────────────
 async function loadDashboard() {
   try {
-    const [stats, channels, history, analytics] = await Promise.all([
+    // ① تحميل الأساسيات أولاً (stats + channels) — اللوحة تظهر بسرعة
+    const [stats, channels] = await Promise.all([
       fetch('/api/stats').then(r => r.json()),
       fetch('/api/channels/status').then(r => r.json()),
-      fetch('/api/history?per_page=5').then(r => r.json()),
-      fetch('/api/analytics?days=7').then(r => r.json()),
     ]);
 
-    // إحصاءات
     document.getElementById('stat-published').textContent = stats.published_today ?? 0;
     document.getElementById('stat-clicks').textContent = formatNumber(stats.clicks_today ?? 0);
     document.getElementById('stat-pending').textContent = stats.pending_count ?? 0;
@@ -139,14 +141,16 @@ async function loadDashboard() {
       updateQueueBadge(stats.pending_count);
     }
 
-    // حالة القنوات
     renderChannels(channels);
 
-    // آخر المنشورات
-    renderRecentPosts(history.items || []);
-
-    // رسم بياني
-    renderWeeklyChart(analytics.daily || []);
+    // ② تأجيل تحميل الأقسام الثقيلة — لا تحجب اللوحة الرئيسية
+    fetch('/api/history?per_page=5').then(r => r.json())
+      .then(history => renderRecentPosts(history.items || []))
+      .catch(() => {});
+    fetch('/api/analytics?days=7').then(r => r.json())
+      .then(analytics => renderWeeklyChart(analytics.daily || []))
+      .catch(() => {});
+    return;
 
   } catch (e) {
     console.error('خطأ في تحميل Dashboard:', e);

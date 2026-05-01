@@ -64,8 +64,9 @@ if _DB_URL_ENV:
             DATABASE_URL,
             pool_pre_ping=True,
             pool_recycle=300,
-            pool_size=10,        # كان افتراضياً 5
-            max_overflow=20,     # إجمالي 30 اتصال متاح
+            pool_size=20,        # رفعنا من 10 لتحمّل scheduler + auth + endpoints متوازية
+            max_overflow=30,     # إجمالي 50 اتصال متاح
+            pool_timeout=10,     # لا تنتظر اتصال أكثر من 10s — افشل سريعاً بدلاً من التعليق
             echo=False,
         )
     _db_label = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL
@@ -217,6 +218,8 @@ ENV_VAR_MAP: dict[str, str] = {
     "openrouter":           "OPENROUTER_API_KEY",
     # قاعدة بيانات Supabase
     "supabase_db_url":      "DATABASE_URL",
+    "supabase_url":         "SUPABASE_URL",
+    "supabase_anon_key":    "SUPABASE_ANON_KEY",
 }
 
 
@@ -311,7 +314,7 @@ DEFAULT_SETTINGS = {
     "auto_discover_categories_count": 5,   # عدد التصنيفات المراد اكتشافها
     # ── السكرابر المجاني ──────────────────────────────────
     "amazon_data_source": "scraper",       # "scraper" | "rapidapi" | "auto"
-    "scraper_cache_ttl_hours": 6,
+    "scraper_cache_ttl_hours": 12,
     # ── توقيع قناة تلقرام (يُلحق بنهاية كل منشور) ─────────
     "telegram_footer": "\n\nللمزيد من العروض: https://t.me/Consulting_Sales",
     # ── Autopilot ─────────────────────────────────────────

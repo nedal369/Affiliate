@@ -137,9 +137,9 @@ async def auth_middleware(request: Request, call_next):
         request.state.user = cached[0]
         return await call_next(request)
 
-    # ② تحقق فعلي من DB
+    # ② تحقق فعلي من DB (في thread لتجنّب حجب event loop)
     from backend.services.auth_service import get_user_from_token
-    user = get_user_from_token(token)
+    user = await asyncio.to_thread(get_user_from_token, token)
     if not user:
         _token_cache.pop(token, None)
         if path.startswith("/api/"):
@@ -215,8 +215,8 @@ def _login_rate_limit(func):
 @app.post("/api/auth/login")
 @_login_rate_limit
 async def login(request: Request, body: LoginBody, response: Response):
-    from backend.services.auth_service import authenticate_user, create_access_token
-    user = authenticate_user(body.username.strip(), body.password)
+    from backend.services.auth_service import authenticate_user_async, create_access_token
+    user = await authenticate_user_async(body.username.strip(), body.password)
     if not user:
         raise HTTPException(401, "اسم المستخدم أو كلمة المرور غير صحيحة")
 
@@ -785,7 +785,7 @@ async def save_settings(request: Request, body: dict = Body(...)):
 KNOWN_SERVICES = [
     "anthropic", "openai", "google", "groq",
     "openrouter",
-    "supabase_db_url",
+    "supabase_db_url", "supabase_url", "supabase_anon_key",
     "amazon_access_key", "amazon_secret_key", "amazon_associate_tag",
     "rapidapi_key",
     "apify",
@@ -958,6 +958,27 @@ async def test_key(service: str):
             version = await asyncio.to_thread(_check)
             test_engine.dispose()
             return {"success": True, "message": f"متصل ✓ — {version}"}
+        except Exception as e:
+            return {"success": False, "message": f"فشل الاتصال: {e}"}
+
+    elif service in ("supabase_url", "supabase_anon_key"):
+        # اختبار يجمع كلا المفتاحين معاً
+        from backend.config import get_api_key as _gak
+        supabase_url = _gak("supabase_url") or ""
+        supabase_key = _gak("supabase_anon_key") or ""
+        if not supabase_url or not supabase_key:
+            return {"success": False, "message": "يجب حفظ رابط المشروع ومفتاح الـ API معاً قبل الاختبار"}
+        supabase_url = supabase_url.rstrip("/")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{supabase_url}/rest/v1/",
+                    headers={"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"},
+                )
+            if resp.status_code < 400:
+                return {"success": True, "message": "متصل ✓ — Supabase REST API جاهز"}
+            return {"success": False, "message": f"استجابة HTTP {resp.status_code}: {resp.text[:120]}"}
         except Exception as e:
             return {"success": False, "message": f"فشل الاتصال: {e}"}
 

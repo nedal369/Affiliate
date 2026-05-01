@@ -286,7 +286,7 @@ function renderQueue() {
     <div class="product-card${p.is_deal_of_day ? ' deal-of-day-card' : ''}" id="product-${p.id}">
       <div class="product-card-header">
         ${p.image_url
-          ? `<img class="product-thumb" src="${p.image_url}" alt="صورة المنتج" onerror="this.outerHTML='<div class=product-thumb-placeholder>📦</div>'">`
+          ? `<img class="product-thumb" src="${p.image_url}" alt="صورة المنتج" loading="lazy" decoding="async" onerror="this.outerHTML='<div class=product-thumb-placeholder>📦</div>'">`
           : '<div class="product-thumb-placeholder">📦</div>'}
         <div class="product-info">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -606,7 +606,7 @@ function showResultModal(product, autoPublished) {
   infoEl.innerHTML = `
     <div style="display:flex;gap:12px;align-items:flex-start;">
       ${product.image_url
-        ? `<img src="${product.image_url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">`
+        ? `<img src="${product.image_url}" loading="lazy" decoding="async" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">`
         : ''}
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:14px;margin-bottom:6px;line-height:1.4;">${product.title_ar || product.title}</div>

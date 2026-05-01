@@ -756,7 +756,7 @@
         ? `${discountHtml}<span class="price-current-small">${deal.price_current.toFixed(0)} ر.س</span>`
         : `<span class="price-current-small" style="color:var(--text-tertiary);">—</span>`;
       const imgHtml = deal.image_url
-        ? `<img src="${deal.image_url}" class="deal-image-small" alt="" onerror="this.style.display='none'">`
+        ? `<img src="${deal.image_url}" class="deal-image-small" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="deal-image-small" style="display:flex;align-items:center;justify-content:center;font-size:24px;">📦</div>`;
       return `
         <div class="deal-card-small ${isSelected ? 'selected' : ''}"
@@ -771,7 +771,7 @@
     }
 
     const imageHtml = deal.image_url
-      ? `<img src="${deal.image_url}" class="deal-image" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      ? `<img src="${deal.image_url}" class="deal-image" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
          <div class="deal-image-placeholder" style="display:none;">📦</div>`
       : `<div class="deal-image-placeholder">📦</div>`;
 
@@ -891,7 +891,7 @@
     body.innerHTML = generatedContent.map((item, idx) => {
       const deal = item.deal || {};
       const imgHtml = deal.image_url
-        ? `<img src="${deal.image_url}" onerror="this.src='';" style="width:40px;height:40px;object-fit:contain;border-radius:6px;">`
+        ? `<img src="${deal.image_url}" loading="lazy" decoding="async" onerror="this.src='';" style="width:40px;height:40px;object-fit:contain;border-radius:6px;">`
         : `<span style="font-size:24px;">📦</span>`;
       return `
         <div class="content-item">
