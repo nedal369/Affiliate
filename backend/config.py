@@ -352,9 +352,11 @@ def init_default_settings():
         except Exception:
             pass
 
+        # نُحدّث القائمة فقط إذا تغيّر الإصدار أو احتوت على نماذج محذوفة فعلاً.
+        # لا نُسقط النماذج المدفوعة أو غير الـ OpenRouter — المستخدم يحقّ له اختيارها.
         needs_priority_update = stored_version < _LLM_PRIORITY_VERSION or (
             isinstance(current_priority, list)
-            and any(m in _DEPRECATED_MODELS or m not in _FREE_OPENROUTER_MODELS for m in current_priority)
+            and any(m in _DEPRECATED_MODELS for m in current_priority)
         )
 
         if needs_priority_update:
@@ -372,7 +374,8 @@ def init_default_settings():
         except Exception:
             current_primary = existing_vals.get("primary_llm", "")
 
-        if not current_primary or current_primary in _DEPRECATED_MODELS or current_primary not in _FREE_OPENROUTER_MODELS:
+        # أعد تعيين النموذج الأساسي فقط إذا كان فارغاً أو محذوفاً — لا نُسقط الاختيارات المدفوعة
+        if not current_primary or current_primary in _DEPRECATED_MODELS:
             new_primary_val = json.dumps(DEFAULT_SETTINGS["primary_llm"])
             _upsert_in_batch(db, existing_map, to_insert, "primary_llm", new_primary_val)
             logger.info(f"تم تعيين النموذج الأساسي: {DEFAULT_SETTINGS['primary_llm']}")
