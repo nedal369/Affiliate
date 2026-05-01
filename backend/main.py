@@ -785,6 +785,7 @@ async def save_settings(request: Request, body: dict = Body(...)):
 KNOWN_SERVICES = [
     "anthropic", "openai", "google", "groq",
     "openrouter",
+    "supabase_db_url",
     "amazon_access_key", "amazon_secret_key", "amazon_associate_tag",
     "rapidapi_key",
     "apify",
@@ -928,6 +929,35 @@ async def test_key(service: str):
     elif service == "x_api_key":
         from backend.services.publisher import test_x_connection
         return await test_x_connection()
+
+    elif service == "supabase_db_url":
+        db_url = api_key
+        if not db_url:
+            return {"success": False, "message": "رابط قاعدة البيانات غير موجود — احفظه أولاً ثم اختبر"}
+        try:
+            import asyncio
+            from sqlalchemy import create_engine, text
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            if "sslmode" not in db_url and ("supabase.co" in db_url or "supabase.com" in db_url):
+                sep = "&" if "?" in db_url else "?"
+                db_url += f"{sep}sslmode=require"
+            test_engine = create_engine(
+                db_url,
+                pool_pre_ping=True,
+                pool_size=1,
+                max_overflow=0,
+                connect_args={"connect_timeout": 10},
+            )
+            def _check():
+                with test_engine.connect() as conn:
+                    row = conn.execute(text("SELECT version()")).fetchone()
+                    return str(row[0])[:60] if row else "OK"
+            version = await asyncio.to_thread(_check)
+            test_engine.dispose()
+            return {"success": True, "message": f"متصل ✓ — {version}"}
+        except Exception as e:
+            return {"success": False, "message": f"فشل الاتصال: {e}"}
 
     return {"success": False, "message": f"اختبار {service} غير مدعوم"}
 

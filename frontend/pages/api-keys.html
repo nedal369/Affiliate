@@ -18,6 +18,52 @@
     </p>
   </div>
 
+  <!-- ══ Supabase ══ -->
+  <div class="card mb-4" id="card-supabase" style="border-color: rgba(62,207,142,0.4);">
+    <div class="card-header" style="background:rgba(62,207,142,0.05);">
+      <div class="flex items-center gap-3">
+        <span style="font-size: 24px;">🗄️</span>
+        <div>
+          <div class="card-title">Supabase <span style="font-size:11px;background:rgba(62,207,142,0.15);color:#3ecf8e;padding:2px 8px;border-radius:10px;margin-right:6px;">قاعدة بيانات دائمة</span></div>
+          <div class="text-sm text-secondary">PostgreSQL مُدار — يحتفظ ببياناتك حتى بعد إعادة نشر Render</div>
+        </div>
+      </div>
+      <span class="badge badge-neutral" id="status-supabase_db_url">جاري التحقق...</span>
+    </div>
+    <div class="card-body">
+      <div style="background:rgba(62,207,142,0.07);border:1px solid rgba(62,207,142,0.2);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;line-height:1.8;">
+        <strong style="color:#3ecf8e;">📋 خطوات ربط Supabase:</strong><br>
+        ① افتح <strong>supabase.com</strong> → New Project<br>
+        ② اذهب إلى <strong>Settings → Database → Connection string → URI</strong><br>
+        ③ انسخ الرابط (يبدأ بـ <code>postgresql://postgres...</code>)<br>
+        ④ الصقه في الحقل أدناه واضغط "حفظ وتطبيق"<br>
+        <span style="color:var(--text-tertiary);">⚠️ لضمان استمرار الاتصال: أضف المفتاح أيضاً في <strong>Render → Environment → DATABASE_URL</strong></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Connection String (DATABASE_URL)</label>
+        <div class="flex gap-2">
+          <div style="position: relative; flex: 1;">
+            <input type="password" class="form-control" id="key-supabase_db_url"
+              placeholder="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres" />
+            <button onclick="toggleVisibility('key-supabase_db_url', 'eye-supabase_db_url')"
+              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
+              id="eye-supabase_db_url">👁</button>
+          </div>
+          <button class="btn btn-primary" data-save="supabase_db_url" onclick="saveSupabaseKey()">حفظ وتطبيق</button>
+        </div>
+        <div id="env-hint-supabase_db_url" class="env-hint">DATABASE_URL</div>
+      </div>
+
+      <div style="background:rgba(255,149,0,0.08);border:1px solid rgba(255,149,0,0.2);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+        ⚠️ <strong>مهم:</strong> التطبيق يقرأ قاعدة البيانات عند بدء التشغيل فقط.<br>
+        بعد الحفظ: أضف <code>DATABASE_URL</code> في <strong>Render → Environment Variables</strong> ثم أعد النشر لتفعيل الاتصال.
+      </div>
+
+      <button class="btn btn-secondary btn-sm" onclick="testKey('supabase_db_url')">🔌 اختبار الاتصال</button>
+    </div>
+  </div>
+
   <!-- ══ OpenRouter ══ -->
   <div class="card mb-4" id="card-openrouter" style="border-color: rgba(99,102,241,0.3);">
     <div class="card-header" style="background:rgba(99,102,241,0.04);">
@@ -442,6 +488,7 @@ async function loadKeys() {
     const data = await fetch('/api/keys').then(r => r.json());
 
     const statusMap = {
+      supabase_db_url:   'status-supabase_db_url',
       openrouter:        'status-openrouter',
       anthropic:         'status-anthropic',
       openai:            'status-openai',
@@ -616,6 +663,29 @@ function toggleVisibility(inputId, btnId) {
   } else {
     input.type = 'password';
     if (btn) btn.textContent = '👁';
+  }
+}
+
+// ── حفظ Supabase URL + إعادة تشغيل لفحص الاتصال ────────────────────────────
+async function saveSupabaseKey() {
+  const input = document.getElementById('key-supabase_db_url');
+  const url = input?.value?.trim();
+  if (!url) { showToast('أدخل رابط قاعدة البيانات أولاً', 'warning'); return;  }
+  if (!url.startsWith('postgresql://') && !url.startsWith('postgres://')) {
+    showToast('الرابط يجب أن يبدأ بـ postgresql:// أو postgres://', 'warning');
+    return;
+  }
+  try {
+    await fetch('/api/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service: 'supabase_db_url', key: url }),
+    });
+    showToast('✓ تم الحفظ — اختبر الاتصال للتحقق', 'success');
+    input.value = '';
+    await loadKeys();
+  } catch (e) {
+    showToast('خطأ في الحفظ: ' + e.message, 'error');
   }
 }
 

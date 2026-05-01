@@ -78,13 +78,6 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "DeepSeek Chat via OpenRouter — مجاني / جودة جيدة",
     },
-    "openrouter/qwen/qwen-2.5-72b-instruct:free": {
-        "provider": "openrouter",
-        "name": "Qwen 2.5 72B (مجاني)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Qwen 2.5 72B via OpenRouter — مجاني / جودة جيدة",
-    },
     "openrouter/google/gemini-2.0-flash-001": {
         "provider": "openrouter",
         "name": "Gemini 2.0 Flash (OpenRouter)",
@@ -234,7 +227,6 @@ _FREE_OPENROUTER_DEFAULTS = [
     "openrouter/meta-llama/llama-3.3-70b-instruct:free",
     "openrouter/deepseek/deepseek-r1:free",
     "openrouter/deepseek/deepseek-chat:free",
-    "openrouter/qwen/qwen-2.5-72b-instruct:free",
 ]
 
 

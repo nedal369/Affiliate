@@ -383,6 +383,18 @@ def _parse_product_html(html: str) -> dict:
 
 
 # ── Offers extraction (Prime price, bank discounts, coupons, promotions) ────────
+_OFFER_KEYWORDS_AR = [
+    "بنك", "بنوك", "كاش باك", "كاشباك", "تقسيط", "بدون فوائد",
+    "كوبون", "خصم إضافي", "خصم اضافي", "عرض", "وفّر", "وفر",
+    "استرداد", "مدى", "STC", "تابي", "تمارا", "أبل باي", "ابل باي",
+]
+_OFFER_KEYWORDS_EN = [
+    "bank", "cashback", "instant discount", "extra discount",
+    "coupon", "save ", "savings", "promotion", "deal", "off with",
+    "no cost emi", "tabby", "tamara", "apple pay", "stc pay",
+]
+
+
 def _parse_offers(soup) -> list[str]:
     """يجمع العروض المتاحة على صفحة المنتج كنصوص قصيرة."""
     found: list[str] = []
@@ -412,26 +424,35 @@ def _parse_offers(soup) -> list[str]:
                 add("سعر برايم", txt[:180])
                 break
 
-    # ② خصم البنوك / الدفع الفوري
+    # ② خصم البنوك / الدفع الفوري — مجموعة واسعة من الـ selectors
     for sel in [
         "#itembox-InstantBankDiscount",
         "[id*='InstantBankDiscount']",
         "[id*='bankOffer']",
+        "[id*='BankOffer']",
+        "[id*='bank-offer']",
         "[data-feature-name='bankOffers']",
+        "[data-feature-name='amzbankOffersBadging']",
+        "#bank-offer_feature_div",
+        ".vsx__offers-bankoffers",
+        "#offerInfoFeature_feature_div",
     ]:
-        el = soup.select_one(sel)
-        if el:
+        for el in soup.select(sel):
             txt = el.get_text(" ", strip=True)
-            if txt:
+            if txt and len(txt) > 8:
                 add("خصم البنوك", txt[:180])
                 break
+        if any(o.startswith("خصم البنوك") for o in found):
+            break
 
     # ③ الكوبونات
     for sel in [
         ".couponLabelText",
         "[id*='couponBadge']",
+        "[id*='promoPriceBlockMessage']",
         ".promoMessageBadgePromotion",
         "#promoPriceBlockMessage_feature_div",
+        "#applicableBadgesByOffer_feature_div .a-badge-text",
     ]:
         el = soup.select_one(sel)
         if el:
@@ -440,12 +461,16 @@ def _parse_offers(soup) -> list[str]:
                 add("كوبون", txt[:180])
                 break
 
-    # ④ قائمة العروض المتاحة العامة
+    # ④ قائمة العروض الترويجية والمتاحة (تشمل التقسيط والكاش باك)
     for sel in [
         "#applicablePromotionList_feature_div",
         "#vsx-offers-aod-pinned-offer",
         "[data-feature-name='promotions']",
+        "[data-feature-name='vsxOffers']",
+        "[data-feature-name='offersInfo']",
+        "#vsxoffers_feature_div",
         ".specialOfferText",
+        "#promoMessageBlock",
     ]:
         for el in soup.select(sel):
             txt = el.get_text(" ", strip=True)
@@ -455,6 +480,19 @@ def _parse_offers(soup) -> list[str]:
                     break
         if len(found) >= 5:
             break
+
+    # ⑤ مسح احتياطي: أي عنصر يحتوي على كلمة مفتاحية مرتبطة بالعروض
+    if len(found) < 3:
+        for el in soup.select("[id$='_feature_div'], .a-section.a-spacing-small, .a-row.aok-relative"):
+            txt = el.get_text(" ", strip=True)
+            if not txt or len(txt) < 10 or len(txt) > 220:
+                continue
+            low = txt.lower()
+            if not any(k in txt for k in _OFFER_KEYWORDS_AR) and not any(k in low for k in _OFFER_KEYWORDS_EN):
+                continue
+            add("", txt[:180])
+            if len(found) >= 5:
+                break
 
     return found[:5]
 

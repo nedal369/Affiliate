@@ -26,12 +26,27 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 # الأولوية:
 #   1) DATABASE_URL (PostgreSQL خارجي — يضمن استمرار البيانات على Render)
 #   2) SQLite محلي على نفس الخادم (يضيع عند كل deploy على Render Free)
-_DB_URL_ENV = os.getenv("DATABASE_URL", "").strip()
+_DB_URL_ENV = (
+    os.getenv("DATABASE_URL", "").strip()
+    or os.getenv("SUPABASE_DB_URL", "").strip()
+)
+
+
+def _ensure_ssl(url: str) -> str:
+    """Supabase يشترط SSL — أضفه إن لم يكن موجوداً."""
+    if "sslmode" in url:
+        return url
+    if "supabase.co" in url or "supabase.com" in url:
+        sep = "&" if "?" in url else "?"
+        return url + f"{sep}sslmode=require"
+    return url
+
 
 if _DB_URL_ENV:
     # Render و Heroku يُصدران postgres:// لكن SQLAlchemy 2.x يحتاج postgresql://
     if _DB_URL_ENV.startswith("postgres://"):
         _DB_URL_ENV = _DB_URL_ENV.replace("postgres://", "postgresql://", 1)
+    _DB_URL_ENV = _ensure_ssl(_DB_URL_ENV)
     DATABASE_URL = _DB_URL_ENV
     IS_SQLITE = DATABASE_URL.startswith("sqlite")
     if IS_SQLITE:
@@ -197,6 +212,8 @@ ENV_VAR_MAP: dict[str, str] = {
     # بدائل بدون Amazon PA API
     "rapidapi_key":         "RAPIDAPI_KEY",
     "openrouter":           "OPENROUTER_API_KEY",
+    # قاعدة بيانات Supabase
+    "supabase_db_url":      "DATABASE_URL",
 }
 
 
@@ -279,7 +296,6 @@ DEFAULT_SETTINGS = {
         "openrouter/meta-llama/llama-3.3-70b-instruct:free",
         "openrouter/deepseek/deepseek-r1:free",
         "openrouter/deepseek/deepseek-chat:free",
-        "openrouter/qwen/qwen-2.5-72b-instruct:free",
     ],
     "amazon_marketplace": "SA",
     "amazon_associate_tag": "nedal01-21",
@@ -307,10 +323,11 @@ DEFAULT_SETTINGS = {
 _DEPRECATED_MODELS = {
     "openrouter/google/gemini-2.0-flash-exp:free",       # محذوف من OpenRouter
     "openrouter/mistralai/mistral-7b-instruct:free",     # رد 404 No endpoints found
+    "openrouter/qwen/qwen-2.5-72b-instruct:free",        # رد 404 No endpoints found
 }
 
 # رقم إصدار قائمة الأولوية — نرفعه عند كل تحديث جوهري لإجبار التطبيق في قواعد البيانات الموجودة
-_LLM_PRIORITY_VERSION = 5
+_LLM_PRIORITY_VERSION = 6
 
 # قائمة النماذج المجانية فقط — أي نموذج خارج هذه القائمة يُستبدل تلقائياً في القائمة المخزّنة
 _FREE_OPENROUTER_MODELS = {
