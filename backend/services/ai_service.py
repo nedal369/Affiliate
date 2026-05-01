@@ -524,12 +524,55 @@ def _offers_instruction(product: dict) -> str:
     return "اذكر العروض الإضافية أعلاه (مثل سعر برايم أو خصم البنوك) إن كانت موجودة"
 
 
+# ── Timeout + Cache + Concurrency: منع تعليق التوليد ──────────────────────────
+# كل محاولة (نموذج واحد) محدودة بـ _PER_MODEL_TIMEOUT ثوانٍ.
+# الكاش يخزّن النتيجة بحسب (ASIN, kind) لتجنّب توليد نفس المنتج مرتين.
+# الـ semaphore يحدّ من التزامن العالمي (scheduler + endpoints) لتجنّب إغراق المزوّد.
+_PER_MODEL_TIMEOUT = 15.0           # ثانية لكل نموذج
+_AI_CACHE: dict[tuple, tuple[str, str, float]] = {}
+_AI_CACHE_TTL = 24 * 3600           # 24 ساعة
+_AI_CACHE_MAX = 500
+_AI_SEMAPHORE = asyncio.Semaphore(3)  # ≤ 3 استدعاءات AI متزامنة
+
+
+def _cache_get(asin: str, kind: str) -> Optional[tuple[str, str]]:
+    if not asin:
+        return None
+    import time as _t
+    entry = _AI_CACHE.get((asin, kind))
+    if not entry:
+        return None
+    content, model_used, ts = entry
+    if _t.time() - ts > _AI_CACHE_TTL:
+        _AI_CACHE.pop((asin, kind), None)
+        return None
+    return content, model_used
+
+
+def _cache_set(asin: str, kind: str, content: str, model_used: str) -> None:
+    if not asin:
+        return
+    import time as _t
+    if len(_AI_CACHE) >= _AI_CACHE_MAX:
+        # تنظيف بسيط — احذف 50 إدخال أقدم
+        for k in list(_AI_CACHE.keys())[:50]:
+            _AI_CACHE.pop(k, None)
+    _AI_CACHE[(asin, kind)] = (content, model_used, _t.time())
+
+
 async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
     """
     يولّد محتوى عربي للمنتج.
     يُرجع: (النص المولَّد, اسم النموذج المستخدم)
     عند الفشل: يرجع القالب الثابت مع سبب الفشل في model_used للتشخيص.
     """
+    # كاش حسب ASIN — يتفادى إعادة التوليد لنفس المنتج
+    asin = product.get("asin", "") or ""
+    if llm == "auto":
+        cached = _cache_get(asin, "post")
+        if cached:
+            logger.info(f"AI cache hit (post): {asin}")
+            return cached[0], f"{cached[1]} (cached)"
     user_prompt = USER_PROMPT_TEMPLATE.format(
         title=product.get("title", ""),
         price_original=product.get("price_original", 0),
@@ -564,12 +607,21 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         last_model = model_id
         try:
             logger.info(f"توليد المحتوى بـ {model_id}")
-            content = await caller(model_id, user_prompt)
+            async with _AI_SEMAPHORE:
+                content = await asyncio.wait_for(
+                    caller(model_id, user_prompt),
+                    timeout=_PER_MODEL_TIMEOUT,
+                )
             if content and len(content.strip()) > 30:
                 logger.info(f"نجح {model_id} ✓")
+                if llm == "auto":
+                    _cache_set(asin, "post", content, model_id)
                 return content, model_id
             last_error = RuntimeError(f"محتوى قصير/فارغ (طول={len(content) if content else 0})")
             logger.warning(f"{model_id}: {last_error}")
+        except asyncio.TimeoutError:
+            last_error = RuntimeError(f"timeout بعد {_PER_MODEL_TIMEOUT}s")
+            logger.warning(f"تجاوز الوقت {model_id} — ننتقل للنموذج التالي")
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id}: {exc}")
@@ -599,9 +651,16 @@ async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
         if not caller:
             continue
         try:
-            result = await caller(mid, prompt, system=sys)
+            async with _AI_SEMAPHORE:
+                result = await asyncio.wait_for(
+                    caller(mid, prompt, system=sys),
+                    timeout=_PER_MODEL_TIMEOUT,
+                )
             if result and len(result.strip()) > 5:
                 return result
+        except asyncio.TimeoutError:
+            logger.warning(f"call_ai تجاوز الوقت مع {mid} ({_PER_MODEL_TIMEOUT}s)")
+            continue
         except Exception as exc:
             logger.warning(f"call_ai فشل مع {mid}: {exc}")
             continue
@@ -647,6 +706,12 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
     if not models_to_try:
         return _make_deal_of_day_fallback(product), "fallback: لا يوجد مفتاح AI مضبوط"
 
+    asin = product.get("asin", "") or ""
+    if llm == "auto":
+        cached = _cache_get(asin, "deal")
+        if cached:
+            return cached[0], f"{cached[1]} (cached)"
+
     last_error: Optional[Exception] = None
     last_model: Optional[str] = None
     for model_id in models_to_try:
@@ -659,10 +724,19 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         last_model = model_id
         try:
             logger.info(f"توليد محتوى عرض اليوم بـ {model_id}")
-            content = await caller(model_id, user_prompt, system=DEAL_OF_DAY_SYSTEM)
+            async with _AI_SEMAPHORE:
+                content = await asyncio.wait_for(
+                    caller(model_id, user_prompt, system=DEAL_OF_DAY_SYSTEM),
+                    timeout=_PER_MODEL_TIMEOUT,
+                )
             if content and len(content.strip()) > 30:
+                if llm == "auto":
+                    _cache_set(asin, "deal", content, model_id)
                 return content, model_id
             last_error = RuntimeError(f"محتوى قصير/فارغ")
+        except asyncio.TimeoutError:
+            last_error = RuntimeError(f"timeout بعد {_PER_MODEL_TIMEOUT}s")
+            logger.warning(f"تجاوز الوقت {model_id} (عرض اليوم)")
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id} (عرض اليوم): {exc}")

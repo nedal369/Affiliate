@@ -137,9 +137,9 @@ async def auth_middleware(request: Request, call_next):
         request.state.user = cached[0]
         return await call_next(request)
 
-    # ② تحقق فعلي من DB
+    # ② تحقق فعلي من DB (في thread لتجنّب حجب event loop)
     from backend.services.auth_service import get_user_from_token
-    user = get_user_from_token(token)
+    user = await asyncio.to_thread(get_user_from_token, token)
     if not user:
         _token_cache.pop(token, None)
         if path.startswith("/api/"):
@@ -215,8 +215,8 @@ def _login_rate_limit(func):
 @app.post("/api/auth/login")
 @_login_rate_limit
 async def login(request: Request, body: LoginBody, response: Response):
-    from backend.services.auth_service import authenticate_user, create_access_token
-    user = authenticate_user(body.username.strip(), body.password)
+    from backend.services.auth_service import authenticate_user_async, create_access_token
+    user = await authenticate_user_async(body.username.strip(), body.password)
     if not user:
         raise HTTPException(401, "اسم المستخدم أو كلمة المرور غير صحيحة")
 

@@ -39,6 +39,18 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    """نسخة async — bcrypt مكلف (~250ms)، يُشغَّل في thread لعدم حجب event loop."""
+    import asyncio
+    return await asyncio.to_thread(verify_password, plain, hashed)
+
+
+async def authenticate_user_async(username: str, password: str) -> Optional[dict]:
+    """نسخة async — تستدعي verify_password في thread + استعلام DB في thread."""
+    import asyncio
+    return await asyncio.to_thread(authenticate_user, username, password)
+
+
 # ── توليد وتحقق JWT ────────────────────────────────────────────────────────────
 def create_access_token(user_id: int, username: str, role: str) -> str:
     from jose import jwt
