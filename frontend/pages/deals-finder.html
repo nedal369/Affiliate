@@ -422,8 +422,11 @@
   </div>
   <div style="display:flex;gap:8px;">
     <button class="btn btn-secondary" onclick="clearSelection()">إلغاء التحديد</button>
+    <button class="btn btn-success" id="btn-add-queue-direct" onclick="addToQueueDirect()" disabled>
+      📋 إضافة للانتظار
+    </button>
     <button class="btn btn-primary" id="btn-gen-content" onclick="generateContent()" disabled>
-      🤖 إنشاء المحتوى
+      🤖 مراجعة المحتوى
     </button>
   </div>
 </div>
@@ -467,7 +470,7 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeContentModal()">إغلاق</button>
       <button class="btn btn-success" id="btn-publish" onclick="addToQueue()">
-        📤 نشر المحتوى المحدد
+        📋 إضافة لقائمة الانتظار
       </button>
     </div>
   </div>
@@ -842,6 +845,7 @@
     const count = selectedDeals.size;
     document.getElementById('selected-count').textContent = count;
     document.getElementById('btn-gen-content').disabled = count === 0;
+    document.getElementById('btn-add-queue-direct').disabled = count === 0;
   }
 
   window.clearSelection = function() {
@@ -876,6 +880,86 @@
   };
 
   // ── توليد المحتوى ─────────────────────────────────────────────────────────────
+  // ── إضافة مباشرة للانتظار (بدون مراجعة) ─────────────────────────────────────
+  window.addToQueueDirect = async function() {
+    if (selectedDeals.size === 0) return;
+
+    const btn = document.getElementById('btn-add-queue-direct');
+    const btnGen = document.getElementById('btn-gen-content');
+    btn.disabled = true;
+    btnGen.disabled = true;
+    btn.textContent = '⏳ جاري الإضافة...';
+
+    // جمع الـ deals المحددة
+    const dealsToProcess = [];
+    for (const key of selectedDeals) {
+      const colonIdx = key.indexOf(':');
+      const catId = key.slice(0, colonIdx);
+      const asin = key.slice(colonIdx + 1);
+      const catDeals = allDiscoveredDeals[catId] || [];
+      const deal = catDeals.find(d => d.asin === asin);
+      if (deal) dealsToProcess.push(deal);
+    }
+
+    if (dealsToProcess.length === 0) {
+      showToast('لا توجد منتجات صالحة للإضافة', 'error');
+      btn.disabled = false;
+      btnGen.disabled = false;
+      btn.innerHTML = '📋 إضافة للانتظار';
+      return;
+    }
+
+    try {
+      // توليد المحتوى أولاً
+      const genResp = await fetch('/api/deals/generate-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deals: dealsToProcess }),
+      });
+      const genData = await genResp.json();
+      if (!genResp.ok) throw new Error(genData.detail || 'خطأ في توليد المحتوى');
+
+      // إضافة للانتظار مباشرة
+      const dealsToAdd = genData.results
+        .map((r, i) => ({ ...r, deal: dealsToProcess[i] }))
+        .filter(item => !item.error)
+        .map(item => ({
+          ...item.deal,
+          content: item.content,
+          model_used: item.model_used || '',
+        }));
+
+      if (dealsToAdd.length === 0) {
+        showToast('فشل توليد المحتوى لجميع المنتجات', 'error');
+        return;
+      }
+
+      const queueResp = await fetch('/api/deals/add-to-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deals: dealsToAdd }),
+      });
+      const queueData = await queueResp.json();
+      if (!queueResp.ok) throw new Error(queueData.detail || 'خطأ في الإضافة');
+
+      const skippedMsg = queueData.skipped > 0 ? ` (تم تخطي ${queueData.skipped} سبق نشره)` : '';
+      showToast(`✅ تمت إضافة ${queueData.added} منتج لقائمة الانتظار${skippedMsg}!`, 'success');
+
+      selectedDeals.clear();
+      document.querySelectorAll('.deal-card.selected, .deal-card-small.selected').forEach(card => {
+        card.classList.remove('selected');
+        card.querySelector('.select-overlay').textContent = '';
+      });
+      updateSelectionBar();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = selectedDeals.size === 0;
+      btnGen.disabled = selectedDeals.size === 0;
+      btn.innerHTML = '📋 إضافة للانتظار';
+    }
+  };
+
   window.generateContent = async function() {
     if (selectedDeals.size === 0) return;
 
@@ -885,7 +969,9 @@
 
     const dealsToProcess = [];
     for (const key of selectedDeals) {
-      const [catId, asin] = key.split(':');
+      const colonIdx = key.indexOf(':');
+      const catId = key.slice(0, colonIdx);
+      const asin = key.slice(colonIdx + 1);
       const catDeals = allDiscoveredDeals[catId] || [];
       const deal = catDeals.find(d => d.asin === asin);
       if (deal) dealsToProcess.push(deal);
