@@ -481,7 +481,28 @@
   let allDiscoveredDeals = {}; // {catId: [deals]} — مدمج من كل الدفعات للبحث
   let selectedDeals = new Set();  // Set of deal keys "cat_id:asin"
   let generatedContent = [];  // [{asin, content, model_used, deal}]
-  let seenAsins = {};          // { category_id: Set<asin> }
+
+  // seenAsins — نحفظها في localStorage لتستمر بين جلسات التصفح (3 أيام TTL)
+  function _loadSeenAsins() {
+    try {
+      const raw = localStorage.getItem('dealSeenAsins');
+      if (!raw) return {};
+      const { data, ts } = JSON.parse(raw);
+      if (Date.now() - ts > 3 * 24 * 3600 * 1000) return {}; // انتهت صلاحيتها
+      // أعد بناء Sets من Arrays
+      const out = {};
+      for (const [k, v] of Object.entries(data || {})) out[k] = new Set(v);
+      return out;
+    } catch { return {}; }
+  }
+  function _saveSeenAsins() {
+    try {
+      const data = {};
+      for (const [k, v] of Object.entries(seenAsins)) data[k] = [...v];
+      localStorage.setItem('dealSeenAsins', JSON.stringify({ data, ts: Date.now() }));
+    } catch { /* ignore quota errors */ }
+  }
+  let seenAsins = _loadSeenAsins();  // { category_id: Set<asin> }
 
   // ── تحميل التصنيفات ─────────────────────────────────────────────────────────
   async function loadCategories() {
@@ -583,13 +604,14 @@
       const newResults = data.results || {};
       progressText.textContent = '✅ اكتمل البحث!';
 
-      // تسجيل ASINs الجديدة
+      // تسجيل ASINs الجديدة وحفظها في localStorage
       for (const [catId, deals] of Object.entries(newResults)) {
         if (!seenAsins[catId]) seenAsins[catId] = new Set();
         (deals || []).forEach(d => seenAsins[catId].add(d.asin));
         if (!allDiscoveredDeals[catId]) allDiscoveredDeals[catId] = [];
         allDiscoveredDeals[catId] = [...(allDiscoveredDeals[catId] || []), ...(deals || [])];
       }
+      _saveSeenAsins();
 
       // إضافة للتاريخ
       const catMap = {};
@@ -637,6 +659,7 @@
     discoveryHistory = [];
     allDiscoveredDeals = {};
     seenAsins = {};
+    try { localStorage.removeItem('dealSeenAsins'); } catch {}
     selectedDeals.clear();
     document.getElementById('results-section').classList.add('hidden');
     document.getElementById('bottom-bar').classList.add('hidden');
@@ -647,6 +670,7 @@
   // إعادة البحث من جديد (تصفير seen_asins + بدء اكتشاف جديد)
   window.resetSeenAndDiscover = function() {
     seenAsins = {};
+    try { localStorage.removeItem('dealSeenAsins'); } catch {}
     showToast('تم تصفير الفلاتر — يمكنك الاكتشاف من جديد', 'info');
     window.startDiscovery();
   };

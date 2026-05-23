@@ -396,6 +396,7 @@ async def _call_groq(model_id: str, user_prompt: str, system: str = SYSTEM_PROMP
 async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
     """
     OpenRouter — بوابة موحّدة.  model_id بصيغة: openrouter/provider/model-name[:free]
+    يستخدم httpx مباشرة لتجنّب مشاكل openai SDK مع بعض الإصدارات.
     """
     from backend.config import get_api_key
     api_key = get_api_key("openrouter")
@@ -404,29 +405,52 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
 
     actual_model = model_id.removeprefix("openrouter/")
 
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
-    response = await client.chat.completions.create(
-        model=actual_model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user_prompt},
-        ],
-        max_tokens=1024,
-        extra_headers={
-            "HTTP-Referer": "https://affiliate-automation.app",
-            "X-Title": "Affiliate Automation System",
-        },
-    )
+    import httpx
+    # timeout يُحدَّد من generate_content عبر asyncio.wait_for — هنا نضع قيمة كبيرة
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=10.0)) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "https://affiliate-automation.app",
+                "X-Title": "Affiliate Automation System",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": actual_model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                "max_tokens": 1024,
+            },
+        )
 
-    if not response.choices:
-        raise RuntimeError("OpenRouter returned no choices")
+    if resp.status_code == 429:
+        raise RuntimeError(f"OpenRouter rate limit (429): {resp.text[:120]}")
+    if resp.status_code == 402:
+        raise RuntimeError("OpenRouter: رصيد غير كافٍ (402) — تحقق من حسابك")
+    if resp.status_code != 200:
+        raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
 
-    content = response.choices[0].message.content
+    try:
+        data = resp.json()
+    except Exception:
+        raise RuntimeError(f"OpenRouter: استجابة غير صالحة: {resp.text[:100]}")
+
+    # OpenRouter يُرجع أحياناً {"error": {...}} حتى مع status 200
+    if "error" in data:
+        err = data["error"]
+        raise RuntimeError(f"OpenRouter error: {err.get('message', str(err))[:120]}")
+
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"OpenRouter: لا توجد choices — {str(data)[:150]}")
+
+    content = (choices[0].get("message") or {}).get("content") or ""
     if not content:
-        # بعض النماذج المجانية قد ترجع None عند الاستنفاد
-        finish = getattr(response.choices[0], "finish_reason", "unknown")
-        raise RuntimeError(f"OpenRouter returned empty content (finish_reason={finish})")
+        finish = choices[0].get("finish_reason", "unknown")
+        raise RuntimeError(f"OpenRouter: محتوى فارغ (finish_reason={finish})")
 
     return content
 
@@ -526,13 +550,22 @@ def _offers_instruction(product: dict) -> str:
 
 # ── Timeout + Cache + Concurrency: منع تعليق التوليد ──────────────────────────
 # كل محاولة (نموذج واحد) محدودة بـ _PER_MODEL_TIMEOUT ثوانٍ.
-# الكاش يخزّن النتيجة بحسب (ASIN, kind) لتجنّب توليد نفس المنتج مرتين.
-# الـ semaphore يحدّ من التزامن العالمي (scheduler + endpoints) لتجنّب إغراق المزوّد.
-_PER_MODEL_TIMEOUT = 15.0           # ثانية لكل نموذج
+# نماذج التفكير (R1, o1) تحتاج وقتاً أطول — نستخدم timeout مخصص لها.
+_PER_MODEL_TIMEOUT = 30.0           # رفعنا من 15s إلى 30s
+_THINKING_MODEL_TIMEOUT = 60.0      # نماذج التفكير (deepseek-r1 وما شابهها)
+_THINKING_KEYWORDS = ("deepseek-r1", "o1-", "reasoning", "think")
 _AI_CACHE: dict[tuple, tuple[str, str, float]] = {}
 _AI_CACHE_TTL = 24 * 3600           # 24 ساعة
 _AI_CACHE_MAX = 500
 _AI_SEMAPHORE = asyncio.Semaphore(3)  # ≤ 3 استدعاءات AI متزامنة
+
+
+def _model_timeout(model_id: str) -> float:
+    """يُرجع timeout مناسب حسب نوع النموذج."""
+    ml = model_id.lower()
+    if any(k in ml for k in _THINKING_KEYWORDS):
+        return _THINKING_MODEL_TIMEOUT
+    return _PER_MODEL_TIMEOUT
 
 
 def _cache_get(asin: str, kind: str) -> Optional[tuple[str, str]]:
@@ -605,12 +638,13 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
             continue
 
         last_model = model_id
+        _timeout = _model_timeout(model_id)
         try:
-            logger.info(f"توليد المحتوى بـ {model_id}")
+            logger.info(f"توليد المحتوى بـ {model_id} (timeout={_timeout}s)")
             async with _AI_SEMAPHORE:
                 content = await asyncio.wait_for(
                     caller(model_id, user_prompt),
-                    timeout=_PER_MODEL_TIMEOUT,
+                    timeout=_timeout,
                 )
             if content and len(content.strip()) > 30:
                 logger.info(f"نجح {model_id} ✓")
@@ -620,7 +654,7 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
             last_error = RuntimeError(f"محتوى قصير/فارغ (طول={len(content) if content else 0})")
             logger.warning(f"{model_id}: {last_error}")
         except asyncio.TimeoutError:
-            last_error = RuntimeError(f"timeout بعد {_PER_MODEL_TIMEOUT}s")
+            last_error = RuntimeError(f"timeout بعد {_timeout}s")
             logger.warning(f"تجاوز الوقت {model_id} — ننتقل للنموذج التالي")
         except Exception as exc:
             last_error = exc
@@ -722,12 +756,13 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         if not caller:
             continue
         last_model = model_id
+        _timeout = _model_timeout(model_id)
         try:
-            logger.info(f"توليد محتوى عرض اليوم بـ {model_id}")
+            logger.info(f"توليد محتوى عرض اليوم بـ {model_id} (timeout={_timeout}s)")
             async with _AI_SEMAPHORE:
                 content = await asyncio.wait_for(
                     caller(model_id, user_prompt, system=DEAL_OF_DAY_SYSTEM),
-                    timeout=_PER_MODEL_TIMEOUT,
+                    timeout=_timeout,
                 )
             if content and len(content.strip()) > 30:
                 if llm == "auto":
@@ -735,7 +770,7 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
                 return content, model_id
             last_error = RuntimeError(f"محتوى قصير/فارغ")
         except asyncio.TimeoutError:
-            last_error = RuntimeError(f"timeout بعد {_PER_MODEL_TIMEOUT}s")
+            last_error = RuntimeError(f"timeout بعد {_timeout}s")
             logger.warning(f"تجاوز الوقت {model_id} (عرض اليوم)")
         except Exception as exc:
             last_error = exc
