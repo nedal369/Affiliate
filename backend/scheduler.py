@@ -335,6 +335,21 @@ async def cleanup_old_records():
                 Product.created_at < cutoff_90d, Product.status.in_(["rejected", "failed"])
             ).delete()
 
+            # المنتجات المعلّقة/المعتمدة الأقدم من 3 أيام — تحرير قائمة الانتظار من القديم
+            cutoff_3d = datetime.utcnow() - timedelta(days=3)
+            old_pending = (
+                db.query(Product)
+                .filter(
+                    Product.created_at < cutoff_3d,
+                    Product.status.in_(["pending", "approved"]),
+                )
+                .count()
+            )
+            db.query(Product).filter(
+                Product.created_at < cutoff_3d,
+                Product.status.in_(["pending", "approved"]),
+            ).delete()
+
             # كاش السكرابر المنتهي
             old_cache = db.query(ScraperCache).filter(ScraperCache.fetched_at < cutoff_cache).count()
             db.query(ScraperCache).filter(ScraperCache.fetched_at < cutoff_cache).delete()
@@ -345,7 +360,8 @@ async def cleanup_old_records():
 
             db.commit()
         logger.info(
-            f"تنظيف: {old_logs} نشر، {old_products} منتج قديم، "
+            f"تنظيف: {old_logs} نشر، {old_products} منتج (رفض/فشل)، "
+            f"{old_pending} منتج معلّق قديم (+3 أيام)، "
             f"{old_cache} كاش منتهي، {old_audit} audit log"
         )
     except Exception as exc:

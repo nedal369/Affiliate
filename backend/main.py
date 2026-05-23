@@ -905,11 +905,10 @@ async def test_key(service: str):
             return {"success": False, "message": "المفتاح غير موجود"}
         try:
             from backend.services.ai_service import test_model
-            # جرّب Gemini 2.0 Flash المجاني أولاً، ثم Llama
             for model in [
-                "openrouter/google/gemini-2.0-flash-exp:free",
                 "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-                "openrouter/meta-llama/llama-3.3-70b-instruct",
+                "openrouter/deepseek/deepseek-chat:free",
+                "openrouter/deepseek/deepseek-r1:free",
             ]:
                 result = await test_model(model)
                 if result.get("success"):
@@ -1413,7 +1412,7 @@ async def publish_deals(body: PublishDealsBody, request: Request):
     from backend.config import SessionLocal
     from backend.models import Product
     from backend.services.publisher import publish_product
-    from backend.services.amazon_service import is_product_posted_before
+    from backend.services.amazon_service import has_published_recently
 
     published_count = 0
     skipped_count = 0
@@ -1422,10 +1421,10 @@ async def publish_deals(body: PublishDealsBody, request: Request):
     for deal in body.deals:
         asin = deal.get("asin", "")
         try:
-            # تخطي المنتجات المنشورة سابقاً
-            if asin and await is_product_posted_before(asin):
+            # تخطي المنتجات المنشورة فعلياً خلال آخر 72 ساعة فقط
+            if asin and await asyncio.to_thread(has_published_recently, asin, 72):
                 skipped_count += 1
-                results.append({"asin": asin, "success": False, "skipped": True, "error": "تم نشر هذا المنتج مسبقاً"})
+                results.append({"asin": asin, "success": False, "skipped": True, "error": "نُشر هذا المنتج خلال آخر 72 ساعة"})
                 continue
 
             title = deal.get("title", "")
@@ -1480,7 +1479,7 @@ async def add_deals_to_queue(body: AddToQueueBody, request: Request):
 
     from backend.config import SessionLocal
     from backend.models import Product
-    from backend.services.amazon_service import is_product_posted_before
+    from backend.services.amazon_service import has_published_recently
 
     added_count = 0
     skipped_count = 0
@@ -1489,9 +1488,10 @@ async def add_deals_to_queue(body: AddToQueueBody, request: Request):
     for deal in body.deals:
         asin = deal.get("asin", "")
         try:
-            if asin and await is_product_posted_before(asin):
+            # نتحقق فقط من النشر الفعلي الأخير (72 ساعة) — لا نحظر المنتجات المعتمدة غير المنشورة
+            if asin and await asyncio.to_thread(has_published_recently, asin, 72):
                 skipped_count += 1
-                results.append({"asin": asin, "success": False, "skipped": True, "error": "تم نشر هذا المنتج مسبقاً"})
+                results.append({"asin": asin, "success": False, "skipped": True, "error": "نُشر هذا المنتج خلال آخر 72 ساعة"})
                 continue
 
             title = deal.get("title", "")

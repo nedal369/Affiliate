@@ -471,8 +471,10 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
         logger.info(f"جاري البحث في تصنيف: {category['name_ar']}")
         all_products = []
 
-        # نحدّد بـ 3 كلمات مفتاحية لكل تصنيف لتقليل عدد الطلبات وتسريع الاكتشاف
-        keywords = category.get("keywords", [])[:3]
+        # نختار 3 كلمات مفتاحية عشوائياً من القائمة لضمان تنوع النتائج بين كل بحث
+        import random as _random
+        all_kws = category.get("keywords", [])
+        keywords = _random.sample(all_kws, min(3, len(all_kws))) if len(all_kws) > 3 else all_kws
         tasks = [_search_kw(kw) for kw in keywords]
         search_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -508,8 +510,15 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
         # ترتيب وإزالة التكرار
         unique_sorted = _sort_and_deduplicate(all_products)
 
-        # AI يختار أفضل 5
-        top5 = await _ai_select_top5(unique_sorted, category["name_ar"])
+        # أضف عشوائية خفيفة: خلّط أفضل 15 منتجاً بدلاً من ترتيب ثابت دائماً
+        # هذا يضمن ظهور منتجات مختلفة في كل بحث حتى مع نفس الكلمات المفتاحية
+        import random as _random
+        top_pool = unique_sorted[:15]
+        _random.shuffle(top_pool)
+        candidates = top_pool + unique_sorted[15:]
+
+        # AI يختار أفضل 5 من أول 20
+        top5 = await _ai_select_top5(candidates, category["name_ar"])
 
         # إضافة معلومات التصنيف
         for p in top5:
