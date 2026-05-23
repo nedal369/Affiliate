@@ -256,9 +256,13 @@ async def list_users(request: Request):
     _require_admin(request)
     from backend.config import SessionLocal
     from backend.models import User
-    with SessionLocal() as db:
-        users = db.query(User).order_by(User.created_at).all()
-        return [_user_to_dict(u) for u in users]
+
+    def _list():
+        with SessionLocal() as db:
+            users = db.query(User).order_by(User.created_at).all()
+            return [_user_to_dict(u) for u in users]
+
+    return await asyncio.to_thread(_list)
 
 
 class CreateUserBody(BaseModel):
@@ -279,21 +283,25 @@ async def create_user(request: Request, body: CreateUserBody):
     if body.role not in ("admin", "user"):
         raise HTTPException(400, "الدور يجب أن يكون admin أو user")
 
-    with SessionLocal() as db:
-        exists = db.query(User).filter(User.username == body.username.strip()).first()
-        if exists:
-            raise HTTPException(400, "اسم المستخدم موجود بالفعل")
-        user = User(
-            username=body.username.strip(),
-            password_hash=get_password_hash(body.password),
-            display_name=body.display_name or body.username,
-            role=body.role,
-            active=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return {"success": True, "user": _user_to_dict(user)}
+    def _create():
+        with SessionLocal() as db:
+            exists = db.query(User).filter(User.username == body.username.strip()).first()
+            if exists:
+                raise HTTPException(400, "اسم المستخدم موجود بالفعل")
+            user = User(
+                username=body.username.strip(),
+                password_hash=get_password_hash(body.password),
+                display_name=body.display_name or body.username,
+                role=body.role,
+                active=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            return _user_to_dict(user)
+
+    user_dict = await asyncio.to_thread(_create)
+    return {"success": True, "user": user_dict}
 
 
 class UpdateUserBody(BaseModel):
@@ -309,34 +317,37 @@ async def update_user(request: Request, user_id: int, body: UpdateUserBody):
     from backend.models import User
     from backend.services.auth_service import get_password_hash
 
-    current = _get_user(request)
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        if not user:
-            raise HTTPException(404, "المستخدم غير موجود")
+    def _update():
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if not user:
+                raise HTTPException(404, "المستخدم غير موجود")
 
-        # منع حذف أو تعطيل الـ admin الأخير
-        if user.role == "admin" and body.active is False:
-            admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
-            if admin_count <= 1:
-                raise HTTPException(400, "لا يمكن تعطيل آخر حساب مدير")
+            # منع حذف أو تعطيل الـ admin الأخير
+            if user.role == "admin" and body.active is False:
+                admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
+                if admin_count <= 1:
+                    raise HTTPException(400, "لا يمكن تعطيل آخر حساب مدير")
 
-        if body.display_name is not None:
-            user.display_name = body.display_name
-        if body.role is not None:
-            if body.role not in ("admin", "user"):
-                raise HTTPException(400, "الدور غير صالح")
-            user.role = body.role
-        if body.active is not None:
-            user.active = body.active
-        if body.new_password:
-            if len(body.new_password) < 6:
-                raise HTTPException(400, "كلمة المرور يجب أن تكون 6 أحرف على الأقل")
-            user.password_hash = get_password_hash(body.new_password)
+            if body.display_name is not None:
+                user.display_name = body.display_name
+            if body.role is not None:
+                if body.role not in ("admin", "user"):
+                    raise HTTPException(400, "الدور غير صالح")
+                user.role = body.role
+            if body.active is not None:
+                user.active = body.active
+            if body.new_password:
+                if len(body.new_password) < 6:
+                    raise HTTPException(400, "كلمة المرور يجب أن تكون 6 أحرف على الأقل")
+                user.password_hash = get_password_hash(body.new_password)
 
-        db.commit()
-        db.refresh(user)
-        return {"success": True, "user": _user_to_dict(user)}
+            db.commit()
+            db.refresh(user)
+            return _user_to_dict(user)
+
+    user_dict = await asyncio.to_thread(_update)
+    return {"success": True, "user": user_dict}
 
 
 @app.delete("/api/users/{user_id}")
@@ -347,16 +358,20 @@ async def delete_user(request: Request, user_id: int):
         raise HTTPException(400, "لا يمكنك حذف حسابك الخاص")
     from backend.config import SessionLocal
     from backend.models import User
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        if not user:
-            raise HTTPException(404, "المستخدم غير موجود")
-        if user.role == "admin":
-            admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
-            if admin_count <= 1:
-                raise HTTPException(400, "لا يمكن حذف آخر حساب مدير")
-        db.delete(user)
-        db.commit()
+
+    def _delete():
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if not user:
+                raise HTTPException(404, "المستخدم غير موجود")
+            if user.role == "admin":
+                admin_count = db.query(User).filter(User.role == "admin", User.active == True).count()
+                if admin_count <= 1:
+                    raise HTTPException(400, "لا يمكن حذف آخر حساب مدير")
+            db.delete(user)
+            db.commit()
+
+    await asyncio.to_thread(_delete)
     return {"success": True}
 
 
@@ -375,12 +390,15 @@ async def change_password(request: Request, body: ChangePasswordBody):
     if len(body.new_password) < 6:
         raise HTTPException(400, "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل")
 
-    with SessionLocal() as db:
-        user = db.get(User, current["id"])
-        if not verify_password(body.current_password, user.password_hash):
-            raise HTTPException(400, "كلمة المرور الحالية غير صحيحة")
-        user.password_hash = get_password_hash(body.new_password)
-        db.commit()
+    def _change():
+        with SessionLocal() as db:
+            user = db.get(User, current["id"])
+            if not verify_password(body.current_password, user.password_hash):
+                raise HTTPException(400, "كلمة المرور الحالية غير صحيحة")
+            user.password_hash = get_password_hash(body.new_password)
+            db.commit()
+
+    await asyncio.to_thread(_change)
     return {"success": True}
 
 
@@ -633,24 +651,29 @@ async def _regenerate_for_product(product_id: int, as_deal_of_day: bool) -> dict
     from backend.models import Product
     from backend.services.ai_service import generate_content, generate_deal_of_day_content
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product_data = _product_to_data(product)
+    def _load():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                raise HTTPException(404, "المنتج غير موجود")
+            return _product_to_data(product)
+
+    product_data = await asyncio.to_thread(_load)
 
     if as_deal_of_day:
         content, model_used = await generate_deal_of_day_content(product_data)
     else:
         content, model_used = await generate_content(product_data)
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if product:
-            product.ai_content = content
-            product.ai_model_used = model_used
-            db.commit()
+    def _save(c=content, m=model_used):
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if product:
+                product.ai_content = c
+                product.ai_model_used = m
+                db.commit()
 
+    await asyncio.to_thread(_save)
     return {"success": True, "content": content, "model_used": model_used}
 
 
@@ -660,12 +683,14 @@ async def regenerate_content_endpoint(product_id: int):
     from backend.config import SessionLocal
     from backend.models import Product
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        is_deal = bool(product.is_deal_of_day)
+    def _get_type():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                raise HTTPException(404, "المنتج غير موجود")
+            return bool(product.is_deal_of_day)
 
+    is_deal = await asyncio.to_thread(_get_type)
     return await _regenerate_for_product(product_id, as_deal_of_day=is_deal)
 
 
@@ -675,15 +700,16 @@ async def set_deal_of_day(product_id: int):
     from backend.config import SessionLocal
     from backend.models import Product
 
-    with SessionLocal() as db:
-        db.query(Product).filter(Product.is_deal_of_day == True).update({"is_deal_of_day": False})
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product.is_deal_of_day = True
-        db.commit()
+    def _set():
+        with SessionLocal() as db:
+            db.query(Product).filter(Product.is_deal_of_day == True).update({"is_deal_of_day": False})
+            product = db.get(Product, product_id)
+            if not product:
+                raise HTTPException(404, "المنتج غير موجود")
+            product.is_deal_of_day = True
+            db.commit()
 
-    # إعادة توليد النص بقالب deal-of-day تلقائياً
+    await asyncio.to_thread(_set)
     result = await _regenerate_for_product(product_id, as_deal_of_day=True)
     return {"success": True, "message": "تم تعيين عرض اليوم وإعادة توليد النص", **result}
 
@@ -694,14 +720,15 @@ async def unset_deal_of_day(product_id: int):
     from backend.config import SessionLocal
     from backend.models import Product
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product.is_deal_of_day = False
-        db.commit()
+    def _unset():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                raise HTTPException(404, "المنتج غير موجود")
+            product.is_deal_of_day = False
+            db.commit()
 
-    # إعادة توليد النص بالقالب العادي
+    await asyncio.to_thread(_unset)
     result = await _regenerate_for_product(product_id, as_deal_of_day=False)
     return {"success": True, "message": "تم إلغاء عرض اليوم وإعادة توليد النص", **result}
 
@@ -747,32 +774,34 @@ async def get_history(
     from backend.models import Product, PublishLog
     from sqlalchemy.orm import subqueryload
 
-    with SessionLocal() as db:
-        q = db.query(Product).filter(Product.status.in_(["published", "failed", "rejected"]))
-        if status:
-            q = q.filter(Product.status == status)
-        total = q.count()
+    def _fetch():
+        with SessionLocal() as db:
+            q = db.query(Product).filter(Product.status.in_(["published", "failed", "rejected"]))
+            if status:
+                q = q.filter(Product.status == status)
+            _total = q.count()
 
-        # تحميل publish_logs دفعة واحدة بدلاً من N+1 query
-        products = (
-            q.options(subqueryload(Product.publish_logs))
-             .order_by(Product.created_at.desc())
-             .offset((page - 1) * per_page)
-             .limit(per_page)
-             .all()
-        )
+            products = (
+                q.options(subqueryload(Product.publish_logs))
+                 .order_by(Product.created_at.desc())
+                 .offset((page - 1) * per_page)
+                 .limit(per_page)
+                 .all()
+            )
 
-        result = []
-        for p in products:
-            logs = p.publish_logs  # محمّلة مسبقاً — لا DB query
-            channels_info = {l.channel: {"success": l.success, "clicks": l.clicks} for l in logs}
-            total_clicks = sum(l.clicks for l in logs)
-            d = _product_to_dict(p)
-            d["channels_info"] = channels_info
-            d["total_clicks"] = total_clicks
-            result.append(d)
+            items = []
+            for p in products:
+                logs = p.publish_logs
+                channels_info = {l.channel: {"success": l.success, "clicks": l.clicks} for l in logs}
+                total_clicks = sum(l.clicks for l in logs)
+                d = _product_to_dict(p)
+                d["channels_info"] = channels_info
+                d["total_clicks"] = total_clicks
+                items.append(d)
+            return _total, items
 
-    return {"total": total, "page": page, "per_page": per_page, "items": result}
+    total, items = await asyncio.to_thread(_fetch)
+    return {"total": total, "page": page, "per_page": per_page, "items": items}
 
 
 # ── الإعدادات ──────────────────────────────────────────────────────────────────
@@ -1084,29 +1113,30 @@ async def add_manual_link(body: ManualLinkBody):
     ai_content, model_used = await generate_content(product_data)
 
     # ④ حفظ في قاعدة البيانات
-    with SessionLocal() as db:
-        product = Product(
-            title=title,
-            title_ar=title,
-            source="manual",
-            amazon_asin=fetched.get("amazon_asin"),
-            affiliate_url=affiliate_url,
-            price_current=product_data["price_current"],
-            price_original=product_data["price_original"],
-            discount_pct=product_data["discount_pct"],
-            rating=product_data["rating"],
-            rating_count=product_data["rating_count"],
-            image_url=fetched.get("image_url"),
-            ai_content=ai_content,
-            ai_model_used=model_used,
-            status="pending",
-        )
-        db.add(product)
-        db.commit()
-        db.refresh(product)
-        product_id = product.id
-        result = _product_to_dict(product)
+    def _save_manual(c=ai_content, m=model_used):
+        with SessionLocal() as db:
+            product = Product(
+                title=title,
+                title_ar=title,
+                source="manual",
+                amazon_asin=fetched.get("amazon_asin"),
+                affiliate_url=affiliate_url,
+                price_current=product_data["price_current"],
+                price_original=product_data["price_original"],
+                discount_pct=product_data["discount_pct"],
+                rating=product_data["rating"],
+                rating_count=product_data["rating_count"],
+                image_url=fetched.get("image_url"),
+                ai_content=c,
+                ai_model_used=m,
+                status="pending",
+            )
+            db.add(product)
+            db.commit()
+            db.refresh(product)
+            return product.id, _product_to_dict(product)
 
+    product_id, result = await asyncio.to_thread(_save_manual)
     result["fetch_source"] = fetched.get("fetch_source", "scrape")
     result["affiliate_url"] = affiliate_url   # الرابط مع tag=
 
@@ -1179,19 +1209,23 @@ async def get_ai_models():
 async def get_accounts():
     from backend.config import SessionLocal
     from backend.models import WatchedAccount
-    with SessionLocal() as db:
-        accounts = db.query(WatchedAccount).all()
-        return [
-            {
-                "id": a.id,
-                "platform": a.platform,
-                "username": a.username,
-                "active": a.active,
-                "last_checked": a.last_checked.isoformat() if a.last_checked else None,
-                "posts_found": a.posts_found,
-            }
-            for a in accounts
-        ]
+
+    def _list():
+        with SessionLocal() as db:
+            accounts = db.query(WatchedAccount).all()
+            return [
+                {
+                    "id": a.id,
+                    "platform": a.platform,
+                    "username": a.username,
+                    "active": a.active,
+                    "last_checked": a.last_checked.isoformat() if a.last_checked else None,
+                    "posts_found": a.posts_found,
+                }
+                for a in accounts
+            ]
+
+    return await asyncio.to_thread(_list)
 
 
 class AccountBody(BaseModel):
@@ -1204,24 +1238,33 @@ class AccountBody(BaseModel):
 async def add_account(body: AccountBody):
     from backend.config import SessionLocal
     from backend.models import WatchedAccount
-    with SessionLocal() as db:
-        acc = WatchedAccount(platform=body.platform, username=body.username.lstrip("@"), active=body.active)
-        db.add(acc)
-        db.commit()
-        db.refresh(acc)
-        return {"success": True, "id": acc.id}
+
+    def _add():
+        with SessionLocal() as db:
+            acc = WatchedAccount(platform=body.platform, username=body.username.lstrip("@"), active=body.active)
+            db.add(acc)
+            db.commit()
+            db.refresh(acc)
+            return acc.id
+
+    acc_id = await asyncio.to_thread(_add)
+    return {"success": True, "id": acc_id}
 
 
 @app.delete("/api/accounts/{account_id}")
 async def delete_account(account_id: int):
     from backend.config import SessionLocal
     from backend.models import WatchedAccount
-    with SessionLocal() as db:
-        acc = db.get(WatchedAccount, account_id)
-        if not acc:
-            raise HTTPException(404, "الحساب غير موجود")
-        db.delete(acc)
-        db.commit()
+
+    def _delete():
+        with SessionLocal() as db:
+            acc = db.get(WatchedAccount, account_id)
+            if not acc:
+                raise HTTPException(404, "الحساب غير موجود")
+            db.delete(acc)
+            db.commit()
+
+    await asyncio.to_thread(_delete)
     return {"success": True}
 
 
@@ -1229,13 +1272,17 @@ async def delete_account(account_id: int):
 async def toggle_account(account_id: int, body: dict = Body(...)):
     from backend.config import SessionLocal
     from backend.models import WatchedAccount
-    with SessionLocal() as db:
-        acc = db.get(WatchedAccount, account_id)
-        if not acc:
-            raise HTTPException(404, "الحساب غير موجود")
-        if "active" in body:
-            acc.active = body["active"]
-        db.commit()
+
+    def _toggle():
+        with SessionLocal() as db:
+            acc = db.get(WatchedAccount, account_id)
+            if not acc:
+                raise HTTPException(404, "الحساب غير موجود")
+            if "active" in body:
+                acc.active = body["active"]
+            db.commit()
+
+    await asyncio.to_thread(_toggle)
     return {"success": True}
 
 
@@ -1244,12 +1291,16 @@ async def toggle_account(account_id: int, body: dict = Body(...)):
 async def get_keywords():
     from backend.config import SessionLocal
     from backend.models import TrendKeyword
-    with SessionLocal() as db:
-        kws = db.query(TrendKeyword).all()
-        return [
-            {"id": k.id, "keyword": k.keyword, "platform": k.platform, "active": k.active}
-            for k in kws
-        ]
+
+    def _list():
+        with SessionLocal() as db:
+            kws = db.query(TrendKeyword).all()
+            return [
+                {"id": k.id, "keyword": k.keyword, "platform": k.platform, "active": k.active}
+                for k in kws
+            ]
+
+    return await asyncio.to_thread(_list)
 
 
 class KeywordBody(BaseModel):
@@ -1262,24 +1313,33 @@ class KeywordBody(BaseModel):
 async def add_keyword(body: KeywordBody):
     from backend.config import SessionLocal
     from backend.models import TrendKeyword
-    with SessionLocal() as db:
-        kw = TrendKeyword(keyword=body.keyword, platform=body.platform, active=body.active)
-        db.add(kw)
-        db.commit()
-        db.refresh(kw)
-        return {"success": True, "id": kw.id}
+
+    def _add():
+        with SessionLocal() as db:
+            kw = TrendKeyword(keyword=body.keyword, platform=body.platform, active=body.active)
+            db.add(kw)
+            db.commit()
+            db.refresh(kw)
+            return kw.id
+
+    kw_id = await asyncio.to_thread(_add)
+    return {"success": True, "id": kw_id}
 
 
 @app.delete("/api/keywords/{keyword_id}")
 async def delete_keyword(keyword_id: int):
     from backend.config import SessionLocal
     from backend.models import TrendKeyword
-    with SessionLocal() as db:
-        kw = db.get(TrendKeyword, keyword_id)
-        if not kw:
-            raise HTTPException(404, "الكلمة غير موجودة")
-        db.delete(kw)
-        db.commit()
+
+    def _delete():
+        with SessionLocal() as db:
+            kw = db.get(TrendKeyword, keyword_id)
+            if not kw:
+                raise HTTPException(404, "الكلمة غير موجودة")
+            db.delete(kw)
+            db.commit()
+
+    await asyncio.to_thread(_delete)
     return {"success": True}
 
 
@@ -1293,16 +1353,20 @@ async def get_deals_categories():
     import json as _json
     from backend.config import SessionLocal
     from backend.models import DiscoveryCategory
-    with SessionLocal() as db:
-        rows = db.query(DiscoveryCategory).order_by(DiscoveryCategory.sort_order).all()
-        return [
-            {
-                "id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon,
-                "keywords": _json.loads(r.keywords), "active": r.active,
-                "db_id": r.id, "sort_order": r.sort_order,
-            }
-            for r in rows
-        ]
+
+    def _list():
+        with SessionLocal() as db:
+            rows = db.query(DiscoveryCategory).order_by(DiscoveryCategory.sort_order).all()
+            return [
+                {
+                    "id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon,
+                    "keywords": _json.loads(r.keywords), "active": r.active,
+                    "db_id": r.id, "sort_order": r.sort_order,
+                }
+                for r in rows
+            ]
+
+    return await asyncio.to_thread(_list)
 
 
 class CategoryBody(BaseModel):
@@ -1318,25 +1382,30 @@ async def create_category(body: CategoryBody, request: Request):
     import json as _json, re
     from backend.config import SessionLocal
     from backend.models import DiscoveryCategory
-    # توليد cat_id من الاسم
+
     cat_id = re.sub(r"[^a-z0-9_]", "", body.name_ar.lower().replace(" ", "_").replace("-", "_"))[:50]
     if not cat_id:
         cat_id = f"cat_{int(__import__('time').time())}"
-    with SessionLocal() as db:
-        if db.query(DiscoveryCategory).filter(DiscoveryCategory.cat_id == cat_id).first():
-            cat_id = f"{cat_id}_{int(__import__('time').time())}"
-        max_order = db.query(DiscoveryCategory).count()
-        row = DiscoveryCategory(
-            cat_id=cat_id, name_ar=body.name_ar, icon=body.icon,
-            keywords=_json.dumps(body.keywords, ensure_ascii=False),
-            active=body.active, sort_order=max_order + 1,
-        )
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-        from backend.services.deals_finder_service import _invalidate_cat_cache
-        _invalidate_cat_cache()
-        return {"success": True, "id": row.id, "cat_id": row.cat_id}
+
+    def _create(cid=cat_id):
+        with SessionLocal() as db:
+            if db.query(DiscoveryCategory).filter(DiscoveryCategory.cat_id == cid).first():
+                cid = f"{cid}_{int(__import__('time').time())}"
+            max_order = db.query(DiscoveryCategory).count()
+            row = DiscoveryCategory(
+                cat_id=cid, name_ar=body.name_ar, icon=body.icon,
+                keywords=_json.dumps(body.keywords, ensure_ascii=False),
+                active=body.active, sort_order=max_order + 1,
+            )
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+            return row.id, row.cat_id
+
+    row_id, row_cat_id = await asyncio.to_thread(_create)
+    from backend.services.deals_finder_service import _invalidate_cat_cache
+    _invalidate_cat_cache()
+    return {"success": True, "id": row_id, "cat_id": row_cat_id}
 
 
 @app.put("/api/deals/categories/{db_id}")
@@ -1345,15 +1414,19 @@ async def update_category(db_id: int, body: CategoryBody, request: Request):
     import json as _json
     from backend.config import SessionLocal
     from backend.models import DiscoveryCategory
-    with SessionLocal() as db:
-        row = db.get(DiscoveryCategory, db_id)
-        if not row:
-            raise HTTPException(404, "التصنيف غير موجود")
-        row.name_ar = body.name_ar
-        row.icon = body.icon
-        row.keywords = _json.dumps(body.keywords, ensure_ascii=False)
-        row.active = body.active
-        db.commit()
+
+    def _update():
+        with SessionLocal() as db:
+            row = db.get(DiscoveryCategory, db_id)
+            if not row:
+                raise HTTPException(404, "التصنيف غير موجود")
+            row.name_ar = body.name_ar
+            row.icon = body.icon
+            row.keywords = _json.dumps(body.keywords, ensure_ascii=False)
+            row.active = body.active
+            db.commit()
+
+    await asyncio.to_thread(_update)
     from backend.services.deals_finder_service import _invalidate_cat_cache
     _invalidate_cat_cache()
     return {"success": True}
@@ -1364,12 +1437,16 @@ async def delete_category(db_id: int, request: Request):
     """حذف تصنيف"""
     from backend.config import SessionLocal
     from backend.models import DiscoveryCategory
-    with SessionLocal() as db:
-        row = db.get(DiscoveryCategory, db_id)
-        if not row:
-            raise HTTPException(404, "التصنيف غير موجود")
-        db.delete(row)
-        db.commit()
+
+    def _delete():
+        with SessionLocal() as db:
+            row = db.get(DiscoveryCategory, db_id)
+            if not row:
+                raise HTTPException(404, "التصنيف غير موجود")
+            db.delete(row)
+            db.commit()
+
+    await asyncio.to_thread(_delete)
     from backend.services.deals_finder_service import _invalidate_cat_cache
     _invalidate_cat_cache()
     return {"success": True}
@@ -1465,30 +1542,33 @@ async def publish_deals(body: PublishDealsBody, request: Request):
                 results.append({"asin": asin, "success": False, "skipped": True, "error": "نُشر هذا المنتج خلال آخر 72 ساعة"})
                 continue
 
-            title = deal.get("title", "")
-            with SessionLocal() as db:
-                product = Product(
-                    title=title,
-                    title_ar=deal.get("title_ar") or title,
-                    source="deals_finder",
-                    amazon_asin=asin,
-                    amazon_url=deal.get("amazon_url", ""),
-                    affiliate_url=deal.get("affiliate_url", ""),
-                    price_original=deal.get("price_original", 0),
-                    price_current=deal.get("price_current", 0),
-                    discount_pct=deal.get("discount_pct", 0),
-                    rating=deal.get("rating", 0),
-                    rating_count=deal.get("rating_count", 0),
-                    image_url=deal.get("image_url", ""),
-                    ai_content=deal.get("content", ""),
-                    ai_model_used=deal.get("model_used", ""),
-                    status="approved",
-                )
-                db.add(product)
-                db.commit()
-                db.refresh(product)
-                product_id = product.id
+            title = deal.get("title", "") or "منتج"
 
+            def _save_pub(d=deal, t=title, a=asin):
+                with SessionLocal() as db:
+                    product = Product(
+                        title=t[:500],
+                        title_ar=(d.get("title_ar") or t)[:500],
+                        source="deals_finder",
+                        amazon_asin=a[:20] if a else None,
+                        amazon_url=d.get("amazon_url", ""),
+                        affiliate_url=d.get("affiliate_url", ""),
+                        price_original=float(d.get("price_original") or 0),
+                        price_current=float(d.get("price_current") or 0),
+                        discount_pct=int(d.get("discount_pct") or 0),
+                        rating=float(d.get("rating") or 0),
+                        rating_count=int(d.get("rating_count") or 0),
+                        image_url=d.get("image_url", ""),
+                        ai_content=d.get("content", ""),
+                        ai_model_used=(d.get("model_used", "") or "")[:100],
+                        status="approved",
+                    )
+                    db.add(product)
+                    db.commit()
+                    db.refresh(product)
+                    return product.id
+
+            product_id = await asyncio.to_thread(_save_pub)
             pub_result = await publish_product(product_id)
             published_count += 1
             results.append({"asin": asin, "success": True, "product_id": product_id, **pub_result})
