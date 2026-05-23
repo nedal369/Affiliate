@@ -519,6 +519,19 @@ async function approveAll() {
 // ── Init ────────────────────────────────────────────────────────────────────
 loadQueue();
 
+// تحديث تلقائي كل 30 ثانية للقائمة (بدون إعادة رسم إذا لم يتغير العدد)
+let _lastQueueTotal = -1;
+setInterval(async () => {
+  try {
+    const resp = await fetch('/api/queue?per_page=1').then(r => r.json());
+    const total = resp.total ?? 0;
+    if (total !== _lastQueueTotal) {
+      _lastQueueTotal = total;
+      await loadQueue();
+    }
+  } catch { /* تجاهل أخطاء الشبكة */ }
+}, 30000);
+
 // ════════════════════════════════════════════════════════════════════════════
 // إضافة رابط إحالة يدوي
 // ════════════════════════════════════════════════════════════════════════════
