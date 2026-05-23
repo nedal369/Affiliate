@@ -1495,6 +1495,33 @@ async def add_deals_to_queue(body: AddToQueueBody, request: Request):
     skipped_count = 0
     results = []
 
+    def _save_product(deal: dict) -> int:
+        """حفظ منتج واحد في DB — تُستدعى من asyncio.to_thread"""
+        title = deal.get("title", "") or "منتج"
+        asin = deal.get("asin", "")
+        with SessionLocal() as db:
+            product = Product(
+                title=title[:500],
+                title_ar=(deal.get("title_ar") or title)[:500],
+                source="deals_finder",
+                amazon_asin=asin[:20] if asin else None,
+                amazon_url=deal.get("amazon_url", ""),
+                affiliate_url=deal.get("affiliate_url", ""),
+                price_original=float(deal.get("price_original") or 0),
+                price_current=float(deal.get("price_current") or 0),
+                discount_pct=int(deal.get("discount_pct") or 0),
+                rating=float(deal.get("rating") or 0),
+                rating_count=int(deal.get("rating_count") or 0),
+                image_url=deal.get("image_url", ""),
+                ai_content=deal.get("content", ""),
+                ai_model_used=(deal.get("model_used", "") or "")[:100],
+                status="pending",
+            )
+            db.add(product)
+            db.commit()
+            db.refresh(product)
+            return product.id
+
     for deal in body.deals:
         asin = deal.get("asin", "")
         try:
@@ -1504,34 +1531,11 @@ async def add_deals_to_queue(body: AddToQueueBody, request: Request):
                 results.append({"asin": asin, "success": False, "skipped": True, "error": "نُشر هذا المنتج خلال آخر 72 ساعة"})
                 continue
 
-            title = deal.get("title", "")
-            with SessionLocal() as db:
-                product = Product(
-                    title=title,
-                    title_ar=deal.get("title_ar") or title,
-                    source="deals_finder",
-                    amazon_asin=asin,
-                    amazon_url=deal.get("amazon_url", ""),
-                    affiliate_url=deal.get("affiliate_url", ""),
-                    price_original=deal.get("price_original", 0),
-                    price_current=deal.get("price_current", 0),
-                    discount_pct=deal.get("discount_pct", 0),
-                    rating=deal.get("rating", 0),
-                    rating_count=deal.get("rating_count", 0),
-                    image_url=deal.get("image_url", ""),
-                    ai_content=deal.get("content", ""),
-                    ai_model_used=deal.get("model_used", ""),
-                    status="pending",
-                )
-                db.add(product)
-                db.commit()
-                db.refresh(product)
-                product_id = product.id
-
+            product_id = await asyncio.to_thread(_save_product, deal)
             added_count += 1
             results.append({"asin": asin, "success": True, "product_id": product_id})
         except Exception as exc:
-            logger.error(f"خطأ في إضافة المنتج {asin} لقائمة الانتظار: {exc}")
+            logger.error(f"خطأ في إضافة المنتج {asin!r} لقائمة الانتظار: {type(exc).__name__}: {exc}")
             results.append({"asin": asin, "success": False, "error": str(exc)})
 
     return {

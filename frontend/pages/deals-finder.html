@@ -942,6 +942,13 @@
       const queueData = await queueResp.json();
       if (!queueResp.ok) throw new Error(queueData.detail || 'خطأ في الإضافة');
 
+      if (queueData.added === 0 && queueData.skipped === 0) {
+        // كل المنتجات فشلت — نعرض سبب الفشل من أول نتيجة
+        const firstErr = (queueData.results || []).find(r => r.error);
+        const errMsg = firstErr ? firstErr.error : 'فشل حفظ المنتجات — تحقق من اتصال قاعدة البيانات';
+        throw new Error(errMsg);
+      }
+
       const skippedMsg = queueData.skipped > 0 ? ` (تم تخطي ${queueData.skipped} سبق نشره)` : '';
       showToast(`✅ تمت إضافة ${queueData.added} منتج لقائمة الانتظار${skippedMsg}!`, 'success');
 
@@ -1062,6 +1069,12 @@
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'خطأ في الإضافة');
+
+      if (data.added === 0 && data.skipped === 0) {
+        const firstErr = (data.results || []).find(r => r.error);
+        const errMsg = firstErr ? firstErr.error : 'فشل حفظ المنتجات — تحقق من اتصال قاعدة البيانات';
+        throw new Error(errMsg);
+      }
 
       closeContentModal();
       const skippedMsg = data.skipped > 0 ? ` (تم تخطي ${data.skipped} منشور سابقاً)` : '';
