@@ -156,9 +156,7 @@ async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
                 if _is_blocked(html, status):
                     logger.warning(f"Scraper: حظر مكتشف (status={status}) — backoff {_BLOCK_DURATION}s")
                     _blocked_until = time.monotonic() + _BLOCK_DURATION
-                    if attempt < retries - 1:
-                        continue
-                    return "", status
+                    return "", status  # لا إعادة محاولة عند الحظر
 
                 return html, status
 

@@ -693,8 +693,13 @@ async def auto_discover_and_queue_endpoint(request: Request):
 
     categories_count = get_setting("auto_discover_categories_count", 5)
     try:
-        result = await auto_discover_and_queue(max_categories=categories_count)
+        result = await asyncio.wait_for(
+            auto_discover_and_queue(max_categories=categories_count),
+            timeout=120.0,
+        )
         return {"success": True, **result}
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "انتهت مهلة الاكتشاف التلقائي (120 ثانية) — قد يكون Amazon يحجب الطلبات")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
@@ -1356,8 +1361,13 @@ async def discover_deals(body: DiscoverDealsBody, request: Request):
         raise HTTPException(400, "الحد الأقصى 8 تصنيفات في البحث الواحد")
     try:
         from backend.services.deals_finder_service import discover_deals as _discover
-        results = await _discover(body.category_ids, seen_asins=body.seen_asins)
+        results = await asyncio.wait_for(
+            _discover(body.category_ids, seen_asins=body.seen_asins),
+            timeout=90.0,
+        )
         return {"success": True, "results": results}
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "انتهت مهلة البحث (90 ثانية) — قد يكون Amazon يحجب الطلبات من هذا الخادم")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
