@@ -233,18 +233,18 @@ async def run_autopilot_slot():
     dedup_hours = int(get_setting("autopilot_dedup_hours", 72))
 
     # ① اختر تصنيفات لم تُستخدم اليوم وعلّمها فوراً (لمنع slot ثانٍ من اختيارها)
-    cats = pick_unused_categories_for_today(cats_per_slot)
+    cats = await asyncio.to_thread(pick_unused_categories_for_today, cats_per_slot)
     if not cats:
         logger.info("Autopilot: لا توجد تصنيفات متاحة لليوم — تم استخدامها كلها")
         return
     cat_db_ids = [c["id"] for c in cats]
     cat_ids = [c["cat_id"] for c in cats]
     cat_names = [c["name_ar"] for c in cats]
-    mark_categories_used(cat_db_ids)
+    await asyncio.to_thread(mark_categories_used, cat_db_ids)
     logger.info(f"Autopilot: اختار {cat_names}")
 
     # ② اجلب الـ ASINs المنشورة مؤخراً مرة واحدة
-    recent = recent_published_asins(hours=dedup_hours)
+    recent = await asyncio.to_thread(recent_published_asins, dedup_hours)
     seen_map = {cid: list(recent) for cid in cat_ids}
 
     # ③ اكتشف العروض
