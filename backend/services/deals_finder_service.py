@@ -638,33 +638,35 @@ async def auto_discover_and_queue(
 
                 # ولّد المحتوى
                 content, model_used = await generate_content(deal, llm=primary_llm)
-                title = deal.get("title", "")
+                title = (deal.get("title", "") or "")[:500]
 
-                with SessionLocal() as db:
-                    product = Product(
-                        title=title,
-                        title_ar=title,
-                        source="deals_finder",
-                        amazon_asin=asin,
-                        amazon_url=deal.get("amazon_url", ""),
-                        affiliate_url=deal.get("affiliate_url", ""),
-                        price_original=deal.get("price_original", 0),
-                        price_current=deal.get("price_current", 0),
-                        discount_pct=deal.get("discount_pct", 0),
-                        rating=deal.get("rating", 0),
-                        rating_count=deal.get("rating_count", 0),
-                        image_url=deal.get("image_url", ""),
-                        ai_content=content,
-                        ai_model_used=model_used,
-                        status="pending",
-                    )
-                    db.add(product)
-                    db.commit()
+                def _save(d=deal, t=title, a=asin, c=content, m=model_used):
+                    with SessionLocal() as db:
+                        product = Product(
+                            title=t,
+                            title_ar=t,
+                            source="deals_finder",
+                            amazon_asin=a[:20] if a else None,
+                            amazon_url=d.get("amazon_url", ""),
+                            affiliate_url=d.get("affiliate_url", ""),
+                            price_original=float(d.get("price_original") or 0),
+                            price_current=float(d.get("price_current") or 0),
+                            discount_pct=int(d.get("discount_pct") or 0),
+                            rating=float(d.get("rating") or 0),
+                            rating_count=int(d.get("rating_count") or 0),
+                            image_url=d.get("image_url", ""),
+                            ai_content=c,
+                            ai_model_used=(m or "")[:100],
+                            status="pending",
+                        )
+                        db.add(product)
+                        db.commit()
 
+                await asyncio.to_thread(_save)
                 added += 1
                 cat_added += 1
             except Exception as exc:
-                logger.error(f"خطأ في إضافة {asin} للانتظار: {exc}")
+                logger.error(f"خطأ في إضافة {asin} للانتظار: {type(exc).__name__}: {exc}")
 
         if cat_added > 0:
             processed_categories.append({
