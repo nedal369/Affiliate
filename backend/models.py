@@ -70,6 +70,7 @@ class PublishLog(Base):
         Index("ix_publish_logs_published_at", "published_at"),
         Index("ix_publish_logs_product_id",   "product_id"),
         Index("ix_publish_logs_channel",      "channel"),
+        Index("ix_publish_logs_success",      "success"),
     )
 
 
@@ -116,7 +117,7 @@ class ScraperCache(Base):
 
     cache_key = Column(String(255), primary_key=True)   # "asin:B0XXX:SA" | "search:coffee:SA"
     payload = Column(Text, nullable=False)               # JSON
-    fetched_at = Column(DateTime, default=datetime.utcnow)
+    fetched_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class User(Base):

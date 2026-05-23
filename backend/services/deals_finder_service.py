@@ -5,6 +5,7 @@ deals_finder_service.py — اكتشاف أفضل العروض بالذكاء ا
 import json
 import logging
 import asyncio
+import time as _time
 from typing import Optional
 
 import aiohttp
@@ -94,38 +95,70 @@ _BESTSELLER_SLUG_MAP = {
 }
 
 
-def get_all_categories() -> list[dict]:
-    """يقرأ التصنيفات من DB، يعود للقائمة الثابتة إذا كانت القاعدة فارغة"""
+# ── Category in-memory cache (TTL = 1 hour) ──────────────────────────────────────
+_cat_full_cache: dict[str, dict] = {}   # cat_id → full category dict (with keywords)
+_cat_list_cache: list[dict] = []        # list for get_all_categories()
+_cat_cache_ts: float = 0.0
+_CAT_CACHE_TTL = 3600.0
+
+
+def _invalidate_cat_cache():
+    global _cat_full_cache, _cat_list_cache, _cat_cache_ts
+    _cat_full_cache = {}
+    _cat_list_cache = []
+    _cat_cache_ts = 0.0
+
+
+def _rebuild_cat_cache():
+    global _cat_full_cache, _cat_list_cache, _cat_cache_ts
     import json as _json
+    full: dict[str, dict] = {}
+    listing: list[dict] = []
     try:
         from backend.config import SessionLocal
         from backend.models import DiscoveryCategory
         with SessionLocal() as db:
-            rows = db.query(DiscoveryCategory).filter(DiscoveryCategory.active == True).order_by(DiscoveryCategory.sort_order).all()
-            if rows:
-                return [{"id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon} for r in rows]
+            rows = (
+                db.query(DiscoveryCategory)
+                .filter(DiscoveryCategory.active == True)
+                .order_by(DiscoveryCategory.sort_order)
+                .all()
+            )
+            for r in rows:
+                entry = {
+                    "id": r.cat_id,
+                    "name_ar": r.name_ar,
+                    "icon": r.icon,
+                    "keywords": _json.loads(r.keywords),
+                }
+                full[r.cat_id] = entry
+                listing.append({"id": r.cat_id, "name_ar": r.name_ar, "icon": r.icon})
     except Exception:
-        pass
-    return [{"id": c["id"], "name_ar": c["name_ar"], "icon": c["icon"]} for c in CATEGORIES]
+        for c in CATEGORIES:
+            full[c["id"]] = c
+            listing.append({"id": c["id"], "name_ar": c["name_ar"], "icon": c["icon"]})
+    _cat_full_cache = full
+    _cat_list_cache = listing
+    _cat_cache_ts = _time.monotonic()
+
+
+def _ensure_cat_cache():
+    if _time.monotonic() - _cat_cache_ts > _CAT_CACHE_TTL:
+        _rebuild_cat_cache()
+
+
+def get_all_categories() -> list[dict]:
+    """يقرأ التصنيفات من DB مع cache يدوم ساعة"""
+    _ensure_cat_cache()
+    return _cat_list_cache or [{"id": c["id"], "name_ar": c["name_ar"], "icon": c["icon"]} for c in CATEGORIES]
 
 
 def _get_category(category_id: str) -> Optional[dict]:
-    """يجلب تصنيفاً من DB بمعرّفه"""
-    import json as _json
-    try:
-        from backend.config import SessionLocal
-        from backend.models import DiscoveryCategory
-        with SessionLocal() as db:
-            row = db.query(DiscoveryCategory).filter(DiscoveryCategory.cat_id == category_id).first()
-            if row:
-                return {
-                    "id": row.cat_id,
-                    "name_ar": row.name_ar,
-                    "icon": row.icon,
-                    "keywords": _json.loads(row.keywords),
-                }
-    except Exception:
-        pass
+    """يجلب تصنيفاً كاملاً (مع keywords) من الـ cache"""
+    _ensure_cat_cache()
+    cat = _cat_full_cache.get(category_id)
+    if cat:
+        return cat
     return next((c for c in CATEGORIES if c["id"] == category_id), None)
 
 
@@ -438,7 +471,9 @@ async def discover_deals(category_ids: list[str], seen_asins: Optional[dict] = N
         logger.info(f"جاري البحث في تصنيف: {category['name_ar']}")
         all_products = []
 
-        tasks = [_search_kw(kw) for kw in category["keywords"]]
+        # نحدّد بـ 3 كلمات مفتاحية لكل تصنيف لتقليل عدد الطلبات وتسريع الاكتشاف
+        keywords = category.get("keywords", [])[:3]
+        tasks = [_search_kw(kw) for kw in keywords]
         search_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in search_results:

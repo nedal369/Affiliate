@@ -537,10 +537,10 @@ async def approve_all():
     from backend.models import Product
 
     with SessionLocal() as db:
-        pending = db.query(Product).filter(Product.status == "pending").all()
-        count = len(pending)
-        for p in pending:
-            p.status = "approved"
+        count = db.query(Product).filter(Product.status == "pending").count()
+        db.query(Product).filter(Product.status == "pending").update(
+            {"status": "approved"}, synchronize_session=False
+        )
         db.commit()
 
     return {"success": True, "approved": count, "message": f"تمت الموافقة على {count} منتج — ستُنشر حسب الجدولة"}
@@ -1302,6 +1302,8 @@ async def create_category(body: CategoryBody, request: Request):
         db.add(row)
         db.commit()
         db.refresh(row)
+        from backend.services.deals_finder_service import _invalidate_cat_cache
+        _invalidate_cat_cache()
         return {"success": True, "id": row.id, "cat_id": row.cat_id}
 
 
@@ -1320,7 +1322,9 @@ async def update_category(db_id: int, body: CategoryBody, request: Request):
         row.keywords = _json.dumps(body.keywords, ensure_ascii=False)
         row.active = body.active
         db.commit()
-        return {"success": True}
+    from backend.services.deals_finder_service import _invalidate_cat_cache
+    _invalidate_cat_cache()
+    return {"success": True}
 
 
 @app.delete("/api/deals/categories/{db_id}")
@@ -1334,7 +1338,9 @@ async def delete_category(db_id: int, request: Request):
             raise HTTPException(404, "التصنيف غير موجود")
         db.delete(row)
         db.commit()
-        return {"success": True}
+    from backend.services.deals_finder_service import _invalidate_cat_cache
+    _invalidate_cat_cache()
+    return {"success": True}
 
 
 class DiscoverDealsBody(BaseModel):

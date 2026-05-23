@@ -66,11 +66,21 @@ _SA_BESTSELLER_SLUG_MAP = {
 }
 
 # ── Rate-limiting state ───────────────────────────────────────────────────────────
-_semaphore = asyncio.Semaphore(2)
-_blocked_until: float = 0.0   # epoch seconds
+# lazy-initialized inside the running event loop to avoid loop-binding issues
+_semaphore: Optional[asyncio.Semaphore] = None
+_SEMAPHORE_LIMIT = 4           # رفعنا من 2 إلى 4 طلبات متوازية
+_blocked_until: float = 0.0    # epoch seconds (monotonic)
+_BLOCK_DURATION = 30.0         # خفضنا من 60s إلى 30s
 
 # ── Per-domain aiohttp sessions (reuse cookies) ───────────────────────────────────
 _sessions: dict[str, aiohttp.ClientSession] = {}
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _semaphore
+    if _semaphore is None:
+        _semaphore = asyncio.Semaphore(_SEMAPHORE_LIMIT)
+    return _semaphore
 
 
 def _get_headers() -> dict:
@@ -93,7 +103,7 @@ async def _get_session(domain: str) -> aiohttp.ClientSession:
         jar = aiohttp.CookieJar(unsafe=True)
         _sessions[domain] = aiohttp.ClientSession(
             cookie_jar=jar,
-            timeout=aiohttp.ClientTimeout(total=25),
+            timeout=aiohttp.ClientTimeout(total=15, connect=8),  # خفضنا من 25s إلى 15s
         )
     return _sessions[domain]
 
@@ -104,12 +114,16 @@ def _is_blocked(html: str, status: int) -> bool:
     if len(html) < 5000:
         return True
     lower = html.lower()
-    if any(x in lower for x in ["robot check", "validatecaptcha", "captcha", "api-services-support"]):
+    if any(x in lower for x in [
+        "robot check", "validatecaptcha", "captcha", "api-services-support",
+        "automated access", "unusual traffic", "verify you are human",
+        "sorry, we just need to make sure",
+    ]):
         return True
     return False
 
 
-async def _fetch(url: str, retries: int = 3) -> tuple[str, int]:
+async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
     """جلب URL مع retry/backoff. يُرجع (html, status)."""
     global _blocked_until
 
@@ -118,19 +132,21 @@ async def _fetch(url: str, retries: int = 3) -> tuple[str, int]:
     session = await _get_session(domain_key)
 
     for attempt in range(retries):
-        # انتظر إذا كنا محظورين
         now = time.monotonic()
+
+        # إذا كنا محظورين انتظر فقط في المحاولة الثانية وما بعد
         if _blocked_until > now:
-            wait = _blocked_until - now
+            if attempt == 0:
+                # لا تنتظر في المحاولة الأولى — اخرج مباشرة
+                return "", 0
+            wait = min(_blocked_until - now, _BLOCK_DURATION)
             logger.warning(f"Scraper: محظور — انتظار {wait:.0f} ثانية")
             await asyncio.sleep(wait)
 
-        # تأخير عشوائي بين الطلبات
+        # تأخير مخفّف: أول محاولة بدون تأخير، التالية بتأخير تدريجي
         if attempt > 0:
-            delay = random.uniform(0.8, 2.5) * (2 ** attempt)
+            delay = random.uniform(1.0, 2.0) * attempt
             await asyncio.sleep(delay)
-        elif attempt == 0 and _blocked_until == 0.0:
-            await asyncio.sleep(random.uniform(0.3, 1.0))
 
         try:
             async with session.get(url, headers=_get_headers(), allow_redirects=True) as resp:
@@ -138,8 +154,8 @@ async def _fetch(url: str, retries: int = 3) -> tuple[str, int]:
                 html = await resp.text(errors="replace")
 
                 if _is_blocked(html, status):
-                    logger.warning(f"Scraper: حظر مكتشف (status={status}) — backoff 60s")
-                    _blocked_until = time.monotonic() + 60
+                    logger.warning(f"Scraper: حظر مكتشف (status={status}) — backoff {_BLOCK_DURATION}s")
+                    _blocked_until = time.monotonic() + _BLOCK_DURATION
                     if attempt < retries - 1:
                         continue
                     return "", status
@@ -642,11 +658,20 @@ async def search_amazon(
         logger.debug(f"Scraper cache hit: {cache_key}")
         return cached[:num_results]
 
+    # إذا كان السكرابر محظوراً أعد الـ stale cache فوراً بدون انتظار
+    if _blocked_until > time.monotonic():
+        stale = _cache_get_stale(cache_key)
+        if stale is not None:
+            logger.info(f"Scraper محظور — stale cache لـ '{query}'")
+            return stale[:num_results]
+        logger.info(f"Scraper محظور — لا cache متاح لـ '{query}'")
+        return []
+
     from urllib.parse import quote_plus
     domain = _DOMAIN_MAP.get(marketplace, "www.amazon.sa")
-    url = f"https://{domain}/s?k={quote_plus(query)}"
+    url = f"https://{domain}/s?k={quote_plus(query)}&ref=sr_pg_1"
 
-    async with _semaphore:
+    async with _get_semaphore():
         html, status = await _fetch(url)
 
     if not html:
@@ -659,6 +684,12 @@ async def search_amazon(
     results = _parse_search_results(html, marketplace)
     if results:
         _cache_set(cache_key, results)
+    else:
+        # حاول stale cache إذا لم تُستخرج نتائج
+        stale = _cache_get_stale(cache_key)
+        if stale:
+            logger.info(f"Scraper: لا نتائج جديدة — stale cache لـ '{query}'")
+            return stale[:num_results]
 
     logger.info(f"Scraper search '{query}' ({marketplace}): {len(results)} نتيجة")
     return results[:num_results]
@@ -684,7 +715,14 @@ async def get_product_by_asin(
     domain = _DOMAIN_MAP.get(marketplace, "www.amazon.sa")
     url = f"https://{domain}/dp/{asin}"
 
-    async with _semaphore:
+    # إذا كان السكرابر محظوراً أعد الـ stale cache فوراً
+    if _blocked_until > time.monotonic():
+        stale = _cache_get_stale(cache_key)
+        if stale is not None:
+            return stale
+        return None
+
+    async with _get_semaphore():
         html, status = await _fetch(url)
 
     if not html:
@@ -755,7 +793,7 @@ async def get_bestsellers(
     domain = _DOMAIN_MAP.get(marketplace, "www.amazon.sa")
     url = f"https://{domain}/gp/bestsellers/{slug}"
 
-    async with _semaphore:
+    async with _get_semaphore():
         html, status = await _fetch(url)
 
     if not html:
@@ -772,7 +810,6 @@ async def get_bestsellers(
 
     async def fetch_one(asin: str) -> Optional[dict]:
         async with sem4:
-            await asyncio.sleep(random.uniform(0.3, 0.8))
             return await get_product_by_asin(asin, marketplace)
 
     tasks = [fetch_one(a) for a in asins[:20]]
