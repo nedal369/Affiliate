@@ -74,6 +74,14 @@ _BLOCK_DURATION = 30.0         # خفضنا من 60s إلى 30s
 
 # ── Per-domain aiohttp sessions (reuse cookies) ───────────────────────────────────
 _sessions: dict[str, aiohttp.ClientSession] = {}
+_session_lock: Optional[asyncio.Lock] = None
+
+
+def _get_session_lock() -> asyncio.Lock:
+    global _session_lock
+    if _session_lock is None:
+        _session_lock = asyncio.Lock()
+    return _session_lock
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -99,12 +107,13 @@ def _get_headers() -> dict:
 
 
 async def _get_session(domain: str) -> aiohttp.ClientSession:
-    if domain not in _sessions or _sessions[domain].closed:
-        jar = aiohttp.CookieJar(unsafe=True)
-        _sessions[domain] = aiohttp.ClientSession(
-            cookie_jar=jar,
-            timeout=aiohttp.ClientTimeout(total=15, connect=8),  # خفضنا من 25s إلى 15s
-        )
+    async with _get_session_lock():
+        if domain not in _sessions or _sessions[domain].closed:
+            jar = aiohttp.CookieJar(unsafe=True)
+            _sessions[domain] = aiohttp.ClientSession(
+                cookie_jar=jar,
+                timeout=aiohttp.ClientTimeout(total=15, connect=8),
+            )
     return _sessions[domain]
 
 

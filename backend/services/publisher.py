@@ -16,15 +16,18 @@ async def publish_product(product_id: int) -> dict:
     يُرجع: {"telegram": bool, "whatsapp": bool, "x": bool, "errors": {...}}
     """
     from backend.config import get_setting, SessionLocal
-    from backend.models import Product, PublishLog
+    from backend.models import Product
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            return {"success": False, "error": "المنتج غير موجود"}
+    def _load_product():
+        with SessionLocal() as db:
+            p = db.get(Product, product_id)
+            if not p:
+                return None, None
+            return p.ai_content or "", p.image_url or ""
 
-        content = product.ai_content or ""
-        image_url = product.image_url or ""
+    content, image_url = await asyncio.to_thread(_load_product)
+    if content is None:
+        return {"success": False, "error": "المنتج غير موجود"}
 
     enable_telegram = get_setting("enable_telegram", True)
     enable_whatsapp = get_setting("enable_whatsapp", False)
@@ -49,14 +52,14 @@ async def publish_product(product_id: int) -> dict:
                 results[channel] = False
                 errors[channel] = str(result)
             else:
-                # result = (success, error_msg) or (success, error_msg, post_id)
+                # result = (success, error_msg, post_id) أو (success, error_msg)
                 if isinstance(result, tuple) and len(result) >= 3:
                     success, error_msg, post_id = result[0], result[1], result[2]
-                elif isinstance(result, tuple):
+                elif isinstance(result, tuple) and len(result) == 2:
                     success, error_msg = result
                     post_id = None
                 else:
-                    success, error_msg, post_id = result, None, None
+                    success, error_msg, post_id = bool(result), None, None
 
                 results[channel] = success
                 if error_msg:
@@ -64,10 +67,10 @@ async def publish_product(product_id: int) -> dict:
                 if post_id:
                     post_ids[channel] = post_id
 
-    _log_results(product_id, results, errors, post_ids)
+    await asyncio.to_thread(_log_results, product_id, results, errors, post_ids)
 
     all_success = any(results.values()) if results else False
-    _update_product_status(product_id, "published" if all_success else "failed", post_ids)
+    await asyncio.to_thread(_update_product_status, product_id, "published" if all_success else "failed", post_ids)
 
     return {**results, "errors": errors, "success": all_success}
 
