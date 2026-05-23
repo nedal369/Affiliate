@@ -604,7 +604,7 @@ async def auto_discover_and_queue(
     يُرجع: {"added": N, "skipped": N, "categories": [...]}
     """
     from backend.services.ai_service import generate_content
-    from backend.services.amazon_service import is_product_posted_before
+    from backend.services.amazon_service import has_published_recently
     from backend.config import SessionLocal, get_setting
     from backend.models import Product
 
@@ -632,7 +632,7 @@ async def auto_discover_and_queue(
         for deal in top_deals:
             asin = deal.get("asin", "")
             try:
-                if asin and await is_product_posted_before(asin):
+                if asin and await asyncio.to_thread(has_published_recently, asin, 72):
                     skipped += 1
                     continue
 
