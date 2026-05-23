@@ -438,26 +438,19 @@ async def get_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
 ):
-    """قائمة المنتجات في الانتظار مع pagination.
-    للحفاظ على التوافق مع الواجهة القديمة، إذا لم تُمرَّر page نُرجع كل المنتجات (max 200).
-    """
+    """قائمة المنتجات في الانتظار مع pagination."""
     from backend.config import SessionLocal
     from backend.models import Product
-    with SessionLocal() as db:
-        q = db.query(Product).filter(Product.status == "pending")
-        total = q.count()
-        items = (
-            q.order_by(Product.created_at.desc())
-             .offset((page - 1) * per_page)
-             .limit(per_page)
-             .all()
-        )
-        return {
-            "total":    total,
-            "page":     page,
-            "per_page": per_page,
-            "items":    [_product_to_dict(p) for p in items],
-        }
+
+    def _fetch(p=page, pp=per_page):
+        with SessionLocal() as db:
+            q = db.query(Product).filter(Product.status == "pending")
+            total = q.count()
+            items = q.order_by(Product.created_at.desc()).offset((p - 1) * pp).limit(pp).all()
+            return total, [_product_to_dict(i) for i in items]
+
+    total, items = await asyncio.to_thread(_fetch)
+    return {"total": total, "page": page, "per_page": per_page, "items": items}
 
 
 @app.post("/api/queue/{product_id}/approve")
@@ -466,13 +459,18 @@ async def approve_product(product_id: int):
     from backend.config import SessionLocal
     from backend.models import Product
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product.status = "approved"
-        db.commit()
+    def _approve():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                return False
+            product.status = "approved"
+            db.commit()
+            return True
 
+    found = await asyncio.to_thread(_approve)
+    if not found:
+        raise HTTPException(404, "المنتج غير موجود")
     return {"success": True, "message": "تمت الموافقة — سيُنشر في الموعد المجدول"}
 
 
@@ -483,14 +481,22 @@ async def publish_product_now(product_id: int):
     from backend.models import Product
     from backend.services.publisher import publish_product
 
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        if product.status not in ("pending", "approved"):
-            raise HTTPException(400, "المنتج ليس في حالة انتظار")
-        product.status = "approved"
-        db.commit()
+    def _set_approved():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                return "not_found"
+            if product.status not in ("pending", "approved"):
+                return "bad_status"
+            product.status = "approved"
+            db.commit()
+            return "ok"
+
+    status = await asyncio.to_thread(_set_approved)
+    if status == "not_found":
+        raise HTTPException(404, "المنتج غير موجود")
+    if status == "bad_status":
+        raise HTTPException(400, "المنتج ليس في حالة انتظار")
 
     result = await publish_product(product_id)
     return {"success": True, "publish_result": result}
@@ -500,12 +506,19 @@ async def publish_product_now(product_id: int):
 async def reject_product(product_id: int):
     from backend.config import SessionLocal
     from backend.models import Product
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        product.status = "rejected"
-        db.commit()
+
+    def _reject():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                return False
+            product.status = "rejected"
+            db.commit()
+            return True
+
+    found = await asyncio.to_thread(_reject)
+    if not found:
+        raise HTTPException(404, "المنتج غير موجود")
     return {"success": True}
 
 
@@ -518,15 +531,22 @@ class EditProductBody(BaseModel):
 async def edit_product(product_id: int, body: EditProductBody):
     from backend.config import SessionLocal
     from backend.models import Product
-    with SessionLocal() as db:
-        product = db.get(Product, product_id)
-        if not product:
-            raise HTTPException(404, "المنتج غير موجود")
-        if body.ai_content is not None:
-            product.ai_content = body.ai_content
-        if body.title_ar is not None:
-            product.title_ar = body.title_ar
-        db.commit()
+
+    def _edit():
+        with SessionLocal() as db:
+            product = db.get(Product, product_id)
+            if not product:
+                return False
+            if body.ai_content is not None:
+                product.ai_content = body.ai_content
+            if body.title_ar is not None:
+                product.title_ar = body.title_ar
+            db.commit()
+            return True
+
+    found = await asyncio.to_thread(_edit)
+    if not found:
+        raise HTTPException(404, "المنتج غير موجود")
     return {"success": True}
 
 
@@ -536,13 +556,16 @@ async def approve_all():
     from backend.config import SessionLocal
     from backend.models import Product
 
-    with SessionLocal() as db:
-        count = db.query(Product).filter(Product.status == "pending").count()
-        db.query(Product).filter(Product.status == "pending").update(
-            {"status": "approved"}, synchronize_session=False
-        )
-        db.commit()
+    def _approve_all():
+        with SessionLocal() as db:
+            count = db.query(Product).filter(Product.status == "pending").count()
+            db.query(Product).filter(Product.status == "pending").update(
+                {"status": "approved"}, synchronize_session=False
+            )
+            db.commit()
+            return count
 
+    count = await asyncio.to_thread(_approve_all)
     return {"success": True, "approved": count, "message": f"تمت الموافقة على {count} منتج — ستُنشر حسب الجدولة"}
 
 
@@ -553,9 +576,14 @@ async def queue_schedule_info():
     from backend.models import Product
     from datetime import datetime
 
-    with SessionLocal() as db:
-        pending_count = db.query(Product).filter(Product.status == "pending").count()
-        approved_count = db.query(Product).filter(Product.status == "approved").count()
+    def _counts():
+        with SessionLocal() as db:
+            return (
+                db.query(Product).filter(Product.status == "pending").count(),
+                db.query(Product).filter(Product.status == "approved").count(),
+            )
+
+    pending_count, approved_count = await asyncio.to_thread(_counts)
 
     # احسب الموعد القادم
     now = datetime.now()
