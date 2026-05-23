@@ -29,7 +29,7 @@ async def fetch_and_queue():
     from backend.config import get_setting, SessionLocal
     from backend.models import Product
     from backend.services.trend_service import fetch_trends, extract_product_name_with_ai
-    from backend.services.amazon_service import search_product, is_product_posted_before
+    from backend.services.amazon_service import search_product
     from backend.services.ai_service import generate_content
     from backend.services.publisher import publish_product
 
@@ -93,36 +93,39 @@ async def _process_single_trend(
             return
 
         dedup_hours = get_setting("autopilot_dedup_hours", 72)
-        if has_published_recently(amazon["asin"], hours=dedup_hours):
+        if await asyncio.to_thread(has_published_recently, amazon["asin"], dedup_hours):
             logger.info(f"المنتج {amazon['asin']} نُشر خلال آخر {dedup_hours} ساعة — تخطي")
             return
 
         content, model_used = await generate_content(amazon, llm=primary_llm or "auto")
 
-        with SessionLocal() as db:
-            product = Product(
-                title=amazon.get("title", title),
-                title_ar=trend.get("title_ar", ""),
-                source=trend.get("source", "keyword"),
-                source_account=trend.get("source_account", ""),
-                source_views=trend.get("source_views", 0),
-                amazon_asin=amazon["asin"],
-                amazon_url=amazon.get("amazon_url", ""),
-                affiliate_url=amazon["affiliate_url"],
-                price_original=amazon.get("price_original", 0),
-                price_current=amazon.get("price_current", 0),
-                discount_pct=amazon.get("discount_pct", 0),
-                rating=amazon.get("rating", 0),
-                rating_count=amazon.get("rating_count", 0),
-                image_url=amazon.get("image_url", ""),
-                ai_content=content,
-                ai_model_used=model_used,
-                status="approved" if auto_approve else "pending",
-            )
-            db.add(product)
-            db.commit()
-            db.refresh(product)
-            product_id = product.id
+        def _save():
+            with SessionLocal() as db:
+                product = Product(
+                    title=(amazon.get("title", title) or title)[:500],
+                    title_ar=(trend.get("title_ar", "") or "")[:500],
+                    source=trend.get("source", "keyword"),
+                    source_account=trend.get("source_account", ""),
+                    source_views=trend.get("source_views", 0),
+                    amazon_asin=amazon["asin"][:20],
+                    amazon_url=amazon.get("amazon_url", ""),
+                    affiliate_url=amazon["affiliate_url"],
+                    price_original=float(amazon.get("price_original") or 0),
+                    price_current=float(amazon.get("price_current") or 0),
+                    discount_pct=int(amazon.get("discount_pct") or 0),
+                    rating=float(amazon.get("rating") or 0),
+                    rating_count=int(amazon.get("rating_count") or 0),
+                    image_url=amazon.get("image_url", ""),
+                    ai_content=content,
+                    ai_model_used=(model_used or "")[:100],
+                    status="approved" if auto_approve else "pending",
+                )
+                db.add(product)
+                db.commit()
+                db.refresh(product)
+                return product.id
+
+        product_id = await asyncio.to_thread(_save)
 
         logger.info(f"تم إضافة المنتج {amazon['asin']} — الحالة: {product.status}")
 
@@ -151,15 +154,18 @@ async def publish_approved_products():
     posts_per_slot = get_setting("posts_per_slot", 1)
     interval_min = get_setting("post_interval_minutes", 30)
 
-    with SessionLocal() as db:
-        products = (
-            db.query(Product)
-            .filter(Product.status == "approved")
-            .order_by(Product.is_deal_of_day.desc(), Product.created_at.asc())
-            .limit(posts_per_slot)
-            .all()
-        )
-        ids = [p.id for p in products]
+    def _get_approved():
+        with SessionLocal() as db:
+            products = (
+                db.query(Product)
+                .filter(Product.status == "approved")
+                .order_by(Product.is_deal_of_day.desc(), Product.created_at.asc())
+                .limit(posts_per_slot)
+                .all()
+            )
+            return [p.id for p in products]
+
+    ids = await asyncio.to_thread(_get_approved)
 
     if not ids:
         logger.info("لا توجد منتجات معتمدة للنشر في هذا الموعد")
@@ -254,7 +260,7 @@ async def run_autopilot_slot():
     for cid, deals in deals_by_cat.items():
         for deal in deals[:products_per_cat]:
             asin = deal.get("asin", "")
-            if not asin or has_published_recently(asin, hours=dedup_hours):
+            if not asin or await asyncio.to_thread(has_published_recently, asin, dedup_hours):
                 continue
             try:
                 content, model_used = await generate_content(deal, llm=primary_llm)
@@ -262,28 +268,31 @@ async def run_autopilot_slot():
                 logger.warning(f"Autopilot: فشل توليد محتوى {asin}: {exc}")
                 continue
             try:
-                with SessionLocal() as db:
-                    product = Product(
-                        title=deal.get("title", ""),
-                        title_ar=deal.get("title", ""),
-                        source="autopilot",
-                        amazon_asin=asin,
-                        amazon_url=deal.get("amazon_url", ""),
-                        affiliate_url=deal.get("affiliate_url", ""),
-                        price_original=deal.get("price_original", 0),
-                        price_current=deal.get("price_current", 0),
-                        discount_pct=deal.get("discount_pct", 0),
-                        rating=deal.get("rating", 0),
-                        rating_count=deal.get("rating_count", 0),
-                        image_url=deal.get("image_url", ""),
-                        ai_content=content,
-                        ai_model_used=model_used,
-                        status="approved",
-                    )
-                    db.add(product)
-                    db.commit()
-                    db.refresh(product)
-                    queue.append((product.id, asin))
+                def _save_autopilot(d=deal, c=content, m=model_used, a=asin):
+                    with SessionLocal() as db:
+                        product = Product(
+                            title=(d.get("title", "") or "")[:500],
+                            title_ar=(d.get("title", "") or "")[:500],
+                            source="autopilot",
+                            amazon_asin=a[:20],
+                            amazon_url=d.get("amazon_url", ""),
+                            affiliate_url=d.get("affiliate_url", ""),
+                            price_original=float(d.get("price_original") or 0),
+                            price_current=float(d.get("price_current") or 0),
+                            discount_pct=int(d.get("discount_pct") or 0),
+                            rating=float(d.get("rating") or 0),
+                            rating_count=int(d.get("rating_count") or 0),
+                            image_url=d.get("image_url", ""),
+                            ai_content=c,
+                            ai_model_used=(m or "")[:100],
+                            status="approved",
+                        )
+                        db.add(product)
+                        db.commit()
+                        db.refresh(product)
+                        return product.id
+                pid = await asyncio.to_thread(_save_autopilot)
+                queue.append((pid, asin))
             except Exception as exc:
                 logger.error(f"Autopilot: فشل حفظ المنتج {asin}: {exc}")
 
@@ -297,7 +306,7 @@ async def run_autopilot_slot():
     for i, (pid, asin) in enumerate(queue):
         if i > 0 and interval_min > 0:
             await asyncio.sleep(interval_min * 60)
-        if has_published_recently(asin, hours=dedup_hours):
+        if await asyncio.to_thread(has_published_recently, asin, dedup_hours):
             logger.info(f"Autopilot: تجاوز ASIN {asin} (نُشر خلال {dedup_hours}h من قبل slot آخر)")
             continue
         try:
@@ -319,7 +328,7 @@ async def cleanup_old_records():
     cache_ttl_hours = int(get_setting("scraper_cache_ttl_hours", 6))
     cutoff_cache = datetime.utcnow() - timedelta(hours=cache_ttl_hours)
 
-    try:
+    def _do_cleanup():
         with SessionLocal() as db:
             # سجلات النشر القديمة (>90 يوم)
             old_logs = db.query(PublishLog).filter(PublishLog.published_at < cutoff_90d).count()
@@ -359,6 +368,10 @@ async def cleanup_old_records():
             db.query(AuditLog).filter(AuditLog.created_at < cutoff_180d).delete()
 
             db.commit()
+            return (old_logs, old_products, old_pending, old_cache, old_audit)
+
+    try:
+        old_logs, old_products, old_pending, old_cache, old_audit = await asyncio.to_thread(_do_cleanup)
         logger.info(
             f"تنظيف: {old_logs} نشر، {old_products} منتج (رفض/فشل)، "
             f"{old_pending} منتج معلّق قديم (+3 أيام)، "
