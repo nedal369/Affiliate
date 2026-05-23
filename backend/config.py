@@ -516,6 +516,8 @@ def _migrate_db():
         "CREATE INDEX IF NOT EXISTS ix_products_source ON products(source)",
         "CREATE INDEX IF NOT EXISTS ix_publish_logs_product_id ON publish_logs(product_id)",
         "CREATE INDEX IF NOT EXISTS ix_publish_logs_channel ON publish_logs(channel)",
+        "CREATE INDEX IF NOT EXISTS ix_publish_logs_success ON publish_logs(success)",
+        "CREATE INDEX IF NOT EXISTS ix_scraper_cache_fetched_at ON scraper_cache(fetched_at)",
         "CREATE INDEX IF NOT EXISTS ix_discovery_categories_last_used_date ON discovery_categories(last_used_date)",
     ]
 
