@@ -197,27 +197,55 @@ async def _fetch_via_paapi(asin: str) -> Optional[dict]:
 
 
 # ── جلب HTML الصفحة ──────────────────────────────────────────────────────────────
+def _looks_blocked(html: str) -> bool:
+    if not html or len(html) < 5000:
+        return True
+    lower = html.lower()
+    return any(x in lower for x in (
+        "robot check", "validatecaptcha", "captcha", "api-services-support",
+        "automated access", "unusual traffic", "verify you are human",
+    ))
+
+
 async def _fetch_html(url: str) -> Optional[str]:
-    # الـ caller (fetch_product_data) تحقق بالفعل من الرابط الأصلي
+    """
+    Cascade: aiohttp → Scrapling fast → Scrapling stealth.
+    الـ caller (fetch_product_data) تحقق بالفعل من الرابط (SSRF whitelist).
+    """
+    # ── الطبقة ①: aiohttp ───────────────────────────────────────────────
     try:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(headers=_HEADERS) as session:
             async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
                 final_url = str(resp.url)
-                # تحقق من redirect فقط إذا كان الـ URL تغيّر
                 if final_url.rstrip("/") != url.rstrip("/"):
                     try:
                         await _validate_safe_url(final_url)
                     except ValueError as exc:
                         logger.warning(f"redirect إلى نطاق غير مسموح: {exc}")
                         return None
-                if resp.status != 200:
-                    logger.warning(f"جلب الصفحة: HTTP {resp.status} — {url}")
-                    return None
-                return await resp.text(errors="replace")
+                if resp.status == 200:
+                    html = await resp.text(errors="replace")
+                    if not _looks_blocked(html):
+                        return html
+                    logger.info(f"link_fetcher: aiohttp يبدو محظوراً — أحاول Scrapling")
+                else:
+                    logger.info(f"link_fetcher: HTTP {resp.status} — أحاول Scrapling")
     except Exception as exc:
-        logger.warning(f"جلب الصفحة فشل: {exc}")
-        return None
+        logger.warning(f"link_fetcher: aiohttp فشل ({exc}) — أحاول Scrapling")
+
+    # ── الطبقتان ② و ③: Scrapling fast → stealth (داخل stealth_fetch mode=auto) ──
+    try:
+        from backend.services.stealth_fetcher import stealth_fetch
+        html, status = await stealth_fetch(url, mode="auto", timeout=30.0)
+        if html and not _looks_blocked(html):
+            logger.info(f"link_fetcher: ✓ Scrapling نجح ({len(html)} bytes)")
+            return html
+    except Exception as exc:
+        logger.warning(f"link_fetcher: Scrapling فشل: {exc}")
+
+    logger.warning(f"link_fetcher: كل الطبقات فشلت — {url}")
+    return None
 
 
 # ── استخراج JSON-LD ──────────────────────────────────────────────────────────────

@@ -1166,6 +1166,50 @@ async def ai_test_generate(body: AITestBody):
     return await test_generate_live(body.model_id, body.product)
 
 
+# ── تشخيص الـ Scraper ────────────────────────────────────────────────────────────
+@app.get("/api/scraper/diagnose")
+async def scraper_diagnose(asin: str = "B09XS7JWHH", marketplace: str = "SA"):
+    """
+    يُجرّب طبقات الـ scraper الثلاث (aiohttp → Scrapling fast → Scrapling stealth)
+    ويُرجع تقريراً تشخيصياً عن أيّها نجح ووقت الاستجابة.
+    """
+    from backend.services.stealth_fetcher import diagnose as stealth_diagnose
+    from backend.services.amazon_scraper import _fetch_aiohttp, _is_blocked
+    import time as _t
+
+    domain_map = {"SA": "amazon.sa", "AE": "amazon.ae", "US": "amazon.com", "GB": "amazon.co.uk"}
+    domain = domain_map.get(marketplace.upper(), "amazon.sa")
+    url = f"https://www.{domain}/dp/{asin}"
+
+    report: dict = {"url": url, "asin": asin, "marketplace": marketplace, "layers": []}
+
+    # الطبقة ①: aiohttp
+    t0 = _t.time()
+    try:
+        html, status = await _fetch_aiohttp(url, retries=1)
+        report["layers"].append({
+            "name": "aiohttp",
+            "status": status,
+            "html_length": len(html),
+            "elapsed_s": round(_t.time() - t0, 2),
+            "blocked": _is_blocked(html, status) if html else None,
+            "success": bool(html and not _is_blocked(html, status)),
+        })
+    except Exception as exc:
+        report["layers"].append({"name": "aiohttp", "error": str(exc)})
+
+    # الطبقتان ② و ③: Scrapling
+    scrapling_report = await stealth_diagnose(url)
+    report["scrapling_installed"] = scrapling_report.get("scrapling_installed", False)
+    report["layers"].extend(scrapling_report.get("layers", []))
+
+    report["recommendation"] = next(
+        (f"استخدم {layer['name']}" for layer in report["layers"] if layer.get("success")),
+        "كل الطبقات فشلت — تحقّق من تثبيت scrapling أو فعّل RapidAPI",
+    )
+    return report
+
+
 # ── الحسابات المراقبة ─────────────────────────────────────────────────────────────
 @app.get("/api/accounts")
 async def get_accounts():
