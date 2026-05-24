@@ -10,7 +10,29 @@ logger = logging.getLogger(__name__)
 # ── النماذج المدعومة (OpenRouter فقط) ─────────────────────────────────────────
 
 SUPPORTED_MODELS = {
-    # ── مجانية (الأولوية الافتراضية) ──────────────────────
+    # ── مجانية — Gemini أولاً (الأكثر موثوقية) ────────────
+    "openrouter/google/gemini-2.0-flash-exp:free": {
+        "provider": "openrouter",
+        "name": "Gemini 2.0 Flash (مجاني)",
+        "speed": "fast",
+        "quality": "high",
+        "label": "Gemini 2.0 Flash — مجاني / جودة عالية ⭐",
+    },
+    "openrouter/google/gemini-flash-1.5-8b:free": {
+        "provider": "openrouter",
+        "name": "Gemini 1.5 Flash 8B (مجاني)",
+        "speed": "fastest",
+        "quality": "good",
+        "label": "Gemini 1.5 Flash 8B — مجاني / سريع جداً",
+    },
+    "openrouter/google/gemini-flash-1.5:free": {
+        "provider": "openrouter",
+        "name": "Gemini 1.5 Flash (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Gemini 1.5 Flash — مجاني / جودة جيدة",
+    },
+    # ── مجانية — أخرى ──────────────────────────────────────
     "openrouter/meta-llama/llama-3.3-70b-instruct:free": {
         "provider": "openrouter",
         "name": "Llama 3.3 70B (مجاني)",
@@ -32,21 +54,35 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "DeepSeek Chat — مجاني / جودة جيدة",
     },
+    "openrouter/mistralai/mistral-7b-instruct:free": {
+        "provider": "openrouter",
+        "name": "Mistral 7B (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Mistral 7B — مجاني / سريع",
+    },
+    "openrouter/qwen/qwen-2.5-72b-instruct:free": {
+        "provider": "openrouter",
+        "name": "Qwen 2.5 72B (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Qwen 2.5 72B — مجاني / جودة جيدة",
+    },
+    # ── مدفوعة ─────────────────────────────────────────────
     "openrouter/google/gemini-2.0-flash-001": {
         "provider": "openrouter",
-        "name": "Gemini 2.0 Flash",
+        "name": "Gemini 2.0 Flash (مدفوع)",
         "speed": "fast",
         "quality": "high",
-        "label": "Gemini 2.0 Flash — سريع / جودة عالية",
+        "label": "Gemini 2.0 Flash — مدفوع / جودة عالية",
     },
     "openrouter/google/gemini-flash-1.5": {
         "provider": "openrouter",
-        "name": "Gemini 1.5 Flash",
+        "name": "Gemini 1.5 Flash (مدفوع)",
         "speed": "fast",
         "quality": "good",
-        "label": "Gemini 1.5 Flash — سريع / جودة جيدة",
+        "label": "Gemini 1.5 Flash — مدفوع / جودة جيدة",
     },
-    # ── مدفوعة ─────────────────────────────────────────────
     "openrouter/meta-llama/llama-3.3-70b-instruct": {
         "provider": "openrouter",
         "name": "Llama 3.3 70B (مدفوع)",
@@ -81,27 +117,6 @@ SUPPORTED_MODELS = {
         "speed": "medium",
         "quality": "high",
         "label": "Claude 3.5 Sonnet via OpenRouter — متوسط / جودة عالية",
-    },
-    "openrouter/mistralai/mistral-7b-instruct:free": {
-        "provider": "openrouter",
-        "name": "Mistral 7B (مجاني)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Mistral 7B — مجاني / سريع",
-    },
-    "openrouter/qwen/qwen-2.5-72b-instruct:free": {
-        "provider": "openrouter",
-        "name": "Qwen 2.5 72B (مجاني)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Qwen 2.5 72B — مجاني / جودة جيدة",
-    },
-    "openrouter/microsoft/phi-3-medium-128k-instruct:free": {
-        "provider": "openrouter",
-        "name": "Phi-3 Medium (مجاني)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Phi-3 Medium — مجاني / سريع",
     },
 }
 
@@ -193,16 +208,16 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
-# نماذج OpenRouter المجانية — تُستخدم كـ fallback افتراضي عند عدم ضبط أي شيء
-# مرتّبة بحيث تتوزّع على مزوّدين مختلفين لتقليل احتمال 429 المتزامن
+# نماذج OpenRouter المجانية — Gemini أولاً (الأكثر موثوقية وأسرع استجابة)
 _FREE_OPENROUTER_DEFAULTS = [
+    "openrouter/google/gemini-2.0-flash-exp:free",
+    "openrouter/google/gemini-flash-1.5-8b:free",
+    "openrouter/google/gemini-flash-1.5:free",
     "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-    "openrouter/google/gemini-2.0-flash-001",
-    "openrouter/deepseek/deepseek-r1:free",
-    "openrouter/google/gemini-flash-1.5",
     "openrouter/deepseek/deepseek-chat:free",
     "openrouter/mistralai/mistral-7b-instruct:free",
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
+    "openrouter/deepseek/deepseek-r1:free",
 ]
 
 
@@ -225,20 +240,19 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 
     ordered: list[str] = []
 
-    # ① النموذج الأساسي الذي اختاره المستخدم — أولوية قصوى إذا مفتاحه موجود
+    # ① النموذج الأساسي الذي اختاره المستخدم (يُتجاهل إن لم يعد موجوداً)
     if primary and primary in SUPPORTED_MODELS and key_available(primary):
         ordered.append(primary)
 
-    # ② قائمة الأولوية المحفوظة كـ fallback
+    # ② قائمة الأولوية المحفوظة (يُتجاهل ما لم يعد موجوداً في SUPPORTED_MODELS)
     for mid in (saved_list if isinstance(saved_list, list) else []):
         if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
             ordered.append(mid)
 
-    # ③ إذا لم يُضبط شيء — أضف كل نماذج OpenRouter المجانية المتاحة بترتيب ثابت
-    if not ordered:
-        for mid in _FREE_OPENROUTER_DEFAULTS:
-            if mid in SUPPORTED_MODELS and key_available(mid):
-                ordered.append(mid)
+    # ③ أضف دائماً نماذج الـ fallback المجانية التي لم تُضَف بعد
+    for mid in _FREE_OPENROUTER_DEFAULTS:
+        if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
+            ordered.append(mid)
 
     return ordered
 
@@ -406,16 +420,16 @@ def _offers_instruction(product: dict) -> str:
     return "اذكر العروض الإضافية أعلاه (مثل سعر برايم أو خصم البنوك) إن كانت موجودة"
 
 
-# ── Timeout + Cache + Concurrency: منع تعليق التوليد ──────────────────────────
-# كل محاولة (نموذج واحد) محدودة بـ _PER_MODEL_TIMEOUT ثوانٍ.
-# نماذج التفكير (R1, o1) تحتاج وقتاً أطول — نستخدم timeout مخصص لها.
-_PER_MODEL_TIMEOUT = 30.0           # رفعنا من 15s إلى 30s
-_THINKING_MODEL_TIMEOUT = 60.0      # نماذج التفكير (deepseek-r1 وما شابهها)
+# ── Timeout + Cache + Concurrency ─────────────────────────────────────────────
+_PER_MODEL_TIMEOUT    = 45.0   # timeout عام لكل نموذج
+_GEMINI_TIMEOUT       = 45.0   # Gemini سريع لكن أحياناً يحتاج 40s عند cold start
+_THINKING_MODEL_TIMEOUT = 90.0 # نماذج التفكير (deepseek-r1) تحتاج وقتاً أطول
 _THINKING_KEYWORDS = ("deepseek-r1", "o1-", "reasoning", "think")
+_GEMINI_KEYWORDS   = ("gemini",)
 _AI_CACHE: dict[tuple, tuple[str, str, float]] = {}
-_AI_CACHE_TTL = 24 * 3600           # 24 ساعة
+_AI_CACHE_TTL = 24 * 3600
 _AI_CACHE_MAX = 500
-_AI_SEMAPHORE = asyncio.Semaphore(3)  # ≤ 3 استدعاءات AI متزامنة
+_AI_SEMAPHORE = asyncio.Semaphore(3)
 
 
 def _model_timeout(model_id: str) -> float:
@@ -423,6 +437,8 @@ def _model_timeout(model_id: str) -> float:
     ml = model_id.lower()
     if any(k in ml for k in _THINKING_KEYWORDS):
         return _THINKING_MODEL_TIMEOUT
+    if any(k in ml for k in _GEMINI_KEYWORDS):
+        return _GEMINI_TIMEOUT
     return _PER_MODEL_TIMEOUT
 
 
