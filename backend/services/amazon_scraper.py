@@ -132,49 +132,81 @@ def _is_blocked(html: str, status: int) -> bool:
     return False
 
 
-async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
-    """جلب URL مع retry/backoff. يُرجع (html, status)."""
-    global _blocked_until
-
+async def _fetch_aiohttp(url: str, retries: int = 2) -> tuple[str, int]:
+    """الطبقة الأساسية: aiohttp مع user-agent rotation. يُرجع (html, status)."""
     domain = re.search(r"https?://([^/]+)", url)
     domain_key = domain.group(1) if domain else "www.amazon.sa"
     session = await _get_session(domain_key)
 
+    last_status = 0
     for attempt in range(retries):
-        now = time.monotonic()
-
-        # إذا كنا محظورين انتظر فقط في المحاولة الثانية وما بعد
-        if _blocked_until > now:
-            if attempt == 0:
-                # لا تنتظر في المحاولة الأولى — اخرج مباشرة
-                return "", 0
-            wait = min(_blocked_until - now, _BLOCK_DURATION)
-            logger.warning(f"Scraper: محظور — انتظار {wait:.0f} ثانية")
-            await asyncio.sleep(wait)
-
-        # تأخير مخفّف: أول محاولة بدون تأخير، التالية بتأخير تدريجي
         if attempt > 0:
-            delay = random.uniform(1.0, 2.0) * attempt
-            await asyncio.sleep(delay)
+            await asyncio.sleep(random.uniform(1.0, 2.0) * attempt)
 
         try:
             async with session.get(url, headers=_get_headers(), allow_redirects=True) as resp:
                 status = resp.status
                 html = await resp.text(errors="replace")
+                last_status = status
 
                 if _is_blocked(html, status):
-                    logger.warning(f"Scraper: حظر مكتشف (status={status}) — backoff {_BLOCK_DURATION}s")
-                    _blocked_until = time.monotonic() + _BLOCK_DURATION
-                    return "", status  # لا إعادة محاولة عند الحظر
+                    return "", status  # المتّصل سيُجرّب الطبقات التالية
 
                 return html, status
 
         except asyncio.TimeoutError:
-            logger.warning(f"Scraper: timeout {url} (محاولة {attempt + 1})")
+            logger.warning(f"Scraper aiohttp: timeout {url} (محاولة {attempt + 1})")
         except Exception as exc:
-            logger.warning(f"Scraper: خطأ {url}: {exc} (محاولة {attempt + 1})")
+            logger.warning(f"Scraper aiohttp: خطأ {url}: {exc} (محاولة {attempt + 1})")
 
-    return "", 0
+    return "", last_status
+
+
+async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
+    """
+    Cascade: aiohttp → Scrapling fast → Scrapling stealth.
+    عند فشل كل الطبقات يُفعِّل _blocked_until ليُجبر المتّصل على استخدام RapidAPI/cache.
+    """
+    global _blocked_until
+    from backend.config import get_setting
+    from backend.services.stealth_fetcher import stealth_fetch
+
+    strategy = get_setting("scraper_strategy", "cascade") or "cascade"
+
+    now = time.monotonic()
+    if _blocked_until > now:
+        # ما زلنا في فترة backoff — لا نُهدر الوقت، نخرج فوراً ليتحوّل المتّصل لـ RapidAPI
+        return "", 0
+
+    # ── الطبقة ①: aiohttp ────────────────────────────────────────────────
+    if strategy != "scrapling_only":
+        html, status = await _fetch_aiohttp(url, retries=retries)
+        if html and not _is_blocked(html, status):
+            return html, status
+        if strategy == "aiohttp_only":
+            # السلوك القديم: فعّل backoff واخرج
+            if status in (403, 503) or status == 0:
+                _blocked_until = time.monotonic() + _BLOCK_DURATION
+            return "", status
+
+    # ── الطبقة ②: Scrapling fast ────────────────────────────────────────
+    logger.info(f"Scraper: aiohttp فشل — أحاول Scrapling fast: {url}")
+    html, status = await stealth_fetch(url, mode="fast", timeout=30.0)
+    if html and status == 200 and not _is_blocked(html, status):
+        logger.info(f"Scraper: ✓ Scrapling fast نجح ({len(html)} bytes)")
+        return html, status
+
+    # ── الطبقة ③: Scrapling stealth (متصفّح كامل) ───────────────────────
+    logger.info(f"Scraper: fast فشل — أحاول Scrapling stealth: {url}")
+    html, status = await stealth_fetch(url, mode="stealth", timeout=60.0)
+    if html and not _is_blocked(html, status):
+        logger.info(f"Scraper: ✓ Scrapling stealth نجح ({len(html)} bytes)")
+        return html, status
+
+    # كل الطبقات فشلت — فعّل backoff ليتحوّل النظام لـ RapidAPI/cache
+    logger.warning(f"Scraper: كل الطبقات فشلت ({url}) — backoff {_BLOCK_DURATION}s")
+    _blocked_until = time.monotonic() + _BLOCK_DURATION
+    return "", status
 
 
 # ── Price parser ──────────────────────────────────────────────────────────────────
