@@ -208,7 +208,8 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
-# نماذج OpenRouter المجانية — Gemini أولاً (الأكثر موثوقية وأسرع استجابة)
+# نماذج OpenRouter المجانية المعروفة — قائمة احتياط فقط
+# المصدر الأساسي = الاكتشاف الديناميكي عبر /api/v1/models
 _FREE_OPENROUTER_DEFAULTS = [
     "openrouter/google/gemini-2.0-flash-exp:free",
     "openrouter/google/gemini-flash-1.5-8b:free",
@@ -219,6 +220,128 @@ _FREE_OPENROUTER_DEFAULTS = [
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
     "openrouter/deepseek/deepseek-r1:free",
 ]
+
+# ── الاكتشاف الديناميكي لنماذج OpenRouter ──────────────────────────────────
+# يُحدَّث كل ساعة عبر /api/v1/models. يحتفظ فقط بالنماذج المتاحة فعلاً.
+_OR_MODELS_CACHE: dict = {"ts": 0.0, "free_ordered": [], "all_ids": set()}
+_OR_MODELS_TTL = 3600.0  # ساعة
+
+# قائمة سوداء للنماذج التي رجعت 404 — نُحدّثها أثناء الجلسة لتفادي إعادة المحاولة
+_DEAD_MODELS: dict[str, float] = {}
+_DEAD_MODEL_TTL = 1800.0  # 30 دقيقة
+
+# تفضيل ترتيب مزوّدي النماذج المجانية (أعلى = أفضل)
+_FREE_PROVIDER_PRIORITY = (
+    "google/gemini",      # أسرع وأكثر موثوقية
+    "meta-llama/llama",
+    "deepseek/deepseek-chat",
+    "qwen/qwen",
+    "mistralai/mistral",
+    "nousresearch",
+    "microsoft/phi",
+    "deepseek/deepseek-r1",  # أبطأ (نموذج تفكير)
+)
+
+
+def _is_dead(model_id: str) -> bool:
+    import time as _t
+    ts = _DEAD_MODELS.get(model_id)
+    if not ts:
+        return False
+    if _t.time() - ts > _DEAD_MODEL_TTL:
+        _DEAD_MODELS.pop(model_id, None)
+        return False
+    return True
+
+
+def _mark_dead(model_id: str) -> None:
+    import time as _t
+    _DEAD_MODELS[model_id] = _t.time()
+    logger.warning(f"نموذج معطّل (404) — أُضيف للقائمة السوداء 30د: {model_id}")
+
+
+def _free_priority_rank(model_id: str) -> int:
+    """ترتيب أولوية مزوّد النموذج المجاني — أقل = أعلى أولوية."""
+    actual = model_id.removeprefix("openrouter/").lower()
+    for i, prefix in enumerate(_FREE_PROVIDER_PRIORITY):
+        if actual.startswith(prefix):
+            return i
+    return len(_FREE_PROVIDER_PRIORITY)
+
+
+async def _discover_openrouter_models() -> dict:
+    """
+    يجلب قائمة النماذج المتاحة فعلاً من OpenRouter ويُرتّبها حسب الأولوية.
+    يُخزَّن لمدة ساعة. يُرجع: {"free_ordered": [...], "all_ids": {...}}
+    """
+    import time as _t
+    now = _t.time()
+    if _OR_MODELS_CACHE["all_ids"] and now - _OR_MODELS_CACHE["ts"] < _OR_MODELS_TTL:
+        return _OR_MODELS_CACHE
+
+    from backend.config import get_api_key
+    api_key = get_api_key("openrouter")
+    if not api_key:
+        return _OR_MODELS_CACHE
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if resp.status_code != 200:
+            logger.warning(f"OpenRouter /models HTTP {resp.status_code} — استخدام القائمة الاحتياطية")
+            return _OR_MODELS_CACHE
+
+        data = resp.json().get("data") or []
+        all_ids: set[str] = set()
+        free_ids: list[str] = []
+        for m in data:
+            mid = m.get("id") or ""
+            if not mid:
+                continue
+            prefixed = f"openrouter/{mid}"
+            all_ids.add(prefixed)
+            if mid.endswith(":free"):
+                free_ids.append(prefixed)
+
+        free_ordered = sorted(free_ids, key=_free_priority_rank)
+        _OR_MODELS_CACHE.update({
+            "ts": now,
+            "free_ordered": free_ordered,
+            "all_ids": all_ids,
+        })
+        logger.info(f"OpenRouter: اكتُشف {len(all_ids)} نموذج ({len(free_ordered)} مجاني)")
+    except Exception as exc:
+        logger.warning(f"تعذّر اكتشاف نماذج OpenRouter: {exc} — استخدام القائمة الاحتياطية")
+
+    return _OR_MODELS_CACHE
+
+
+def _ensure_supported(model_id: str) -> None:
+    """يُسجّل نموذج OpenRouter في SUPPORTED_MODELS إن لم يكن موجوداً (للنماذج المكتشفة)."""
+    if model_id in SUPPORTED_MODELS:
+        return
+    if not model_id.startswith("openrouter/"):
+        return
+    actual = model_id.removeprefix("openrouter/")
+    is_free = actual.endswith(":free")
+    name = actual.split("/", 1)[-1].removesuffix(":free").replace("-", " ").title()
+    SUPPORTED_MODELS[model_id] = {
+        "provider": "openrouter",
+        "name": name,
+        "speed": "fast",
+        "quality": "good",
+        "label": f"{name} — {'مجاني' if is_free else 'مدفوع'} (مكتشف)",
+    }
+
+
+async def _ensure_models_discovered() -> None:
+    cache = await _discover_openrouter_models()
+    for mid in cache.get("free_ordered", []):
+        _ensure_supported(mid)
 
 
 def _build_model_priority(custom_system: bool = False) -> list[str]:
@@ -249,12 +372,18 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
         if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
             ordered.append(mid)
 
-    # ③ أضف دائماً نماذج الـ fallback المجانية التي لم تُضَف بعد
+    # ③ نماذج OpenRouter المجانية المكتشفة ديناميكياً (المصدر الأساسي للاحتياط)
+    for mid in _OR_MODELS_CACHE.get("free_ordered", []):
+        if mid not in ordered and key_available(mid):
+            ordered.append(mid)
+
+    # ④ القائمة الاحتياطية الثابتة (في حال فشل الاكتشاف)
     for mid in _FREE_OPENROUTER_DEFAULTS:
         if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
             ordered.append(mid)
 
-    return ordered
+    # استبعد النماذج المعطّلة (404 سابق)
+    return [m for m in ordered if not _is_dead(m)]
 
 
 # ── دالة الاستدعاء — OpenRouter فقط ─────────────────────────────────────────
@@ -262,6 +391,10 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 
 class _RateLimitError(RuntimeError):
     """429 من OpenRouter — يُميّزه generate_content لإضافة تأخير قبل المحاولة التالية."""
+
+
+class _ModelNotFoundError(RuntimeError):
+    """404 من OpenRouter — النموذج لم يعد متاحاً، يُضاف للقائمة السوداء."""
 
 
 async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
@@ -302,8 +435,14 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
         raise _RateLimitError(f"rate limit 429 — {actual_model}")
     if resp.status_code == 402:
         raise RuntimeError("OpenRouter: رصيد غير كافٍ (402) — تحقق من حسابك")
+    if resp.status_code == 404:
+        raise _ModelNotFoundError(f"OpenRouter 404: النموذج غير متاح — {actual_model}")
     if resp.status_code != 200:
-        raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
+        # بعض أخطاء "No endpoints found" ترجع 400/200 — افحص النص
+        body = resp.text[:300]
+        if "no endpoints" in body.lower() or "not found" in body.lower():
+            raise _ModelNotFoundError(f"OpenRouter: لا توجد endpoints — {actual_model}")
+        raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {body[:200]}")
 
     try:
         data = resp.json()
@@ -315,8 +454,11 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
         err = data["error"]
         code = err.get("code") or 0
         msg = err.get("message", str(err))
-        if code == 429 or "rate" in str(msg).lower():
+        msg_l = str(msg).lower()
+        if code == 429 or "rate" in msg_l:
             raise _RateLimitError(f"rate limit (error body) — {actual_model}")
+        if code == 404 or "no endpoints" in msg_l or "not found" in msg_l:
+            raise _ModelNotFoundError(f"النموذج غير متاح: {actual_model}")
         raise RuntimeError(f"OpenRouter error: {msg[:120]}")
 
     choices = data.get("choices") or []
@@ -493,6 +635,8 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         affiliate_url=product.get("affiliate_url", ""),
     )
 
+    if llm == "auto":
+        await _ensure_models_discovered()
     models_to_try = _build_model_priority() if llm == "auto" else [llm]
 
     if not models_to_try:
@@ -534,6 +678,9 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
             last_error = exc
             logger.warning(f"rate limit 429 لـ {model_id} — انتظار ثانية ثم المحاولة التالية")
             await asyncio.sleep(1)
+        except _ModelNotFoundError as exc:
+            last_error = exc
+            _mark_dead(model_id)
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id}: {exc}")
@@ -550,6 +697,8 @@ async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
     """
     sys = system or "أنت مساعد ذكي مفيد."
 
+    if model_id == "auto":
+        await _ensure_models_discovered()
     models_to_try = _build_model_priority() if model_id == "auto" else [model_id]
 
     if not models_to_try:
@@ -572,6 +721,12 @@ async def call_ai(prompt: str, system: str = "", model_id: str = "auto") -> str:
                 return result
         except asyncio.TimeoutError:
             logger.warning(f"call_ai تجاوز الوقت مع {mid} ({_PER_MODEL_TIMEOUT}s)")
+            continue
+        except _ModelNotFoundError:
+            _mark_dead(mid)
+            continue
+        except _RateLimitError:
+            await asyncio.sleep(1)
             continue
         except Exception as exc:
             logger.warning(f"call_ai فشل مع {mid}: {exc}")
@@ -613,6 +768,8 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         affiliate_url=product.get("affiliate_url", ""),
     )
 
+    if llm == "auto":
+        await _ensure_models_discovered()
     models_to_try = _build_model_priority() if llm == "auto" else [llm]
 
     if not models_to_try:
@@ -654,6 +811,9 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
             last_error = exc
             logger.warning(f"rate limit 429 لـ {model_id} (عرض اليوم) — انتظار ثانية")
             await asyncio.sleep(1)
+        except _ModelNotFoundError as exc:
+            last_error = exc
+            _mark_dead(model_id)
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id} (عرض اليوم): {exc}")
@@ -720,12 +880,22 @@ async def test_generate_live(model_id: str, product: Optional[dict] = None) -> d
         "affiliate_url": "https://www.amazon.sa/dp/B09XS7JWHH?tag=demo-21",
     }
 
+    # تأكد من الاكتشاف الديناميكي قبل التحقق
+    await _ensure_models_discovered()
+
     # التحقق من وجود النموذج
     if model_id not in SUPPORTED_MODELS:
         return {
             "success": False,
             "stage": "validation",
             "error": f"النموذج {model_id!r} غير موجود في القائمة المدعومة",
+        }
+
+    if _is_dead(model_id):
+        return {
+            "success": False,
+            "stage": "dead_model",
+            "error": f"النموذج معلَّم كمعطّل (404) منذ <30د — جرّب نموذجاً آخر",
         }
 
     info = SUPPORTED_MODELS[model_id]
@@ -799,6 +969,21 @@ async def test_generate_live(model_id: str, product: Optional[dict] = None) -> d
             "error": f"انتهت المهلة الزمنية بعد {_timeout}ث — النموذج بطيء أو غير متاح",
             "elapsed_s": round(_t.time() - t0, 2),
         }
+    except _ModelNotFoundError as exc:
+        _mark_dead(model_id)
+        return {
+            "success": False,
+            "stage": "model_not_found",
+            "error": f"النموذج لم يعد متاحاً على OpenRouter — {exc}",
+            "elapsed_s": round(_t.time() - t0, 2),
+        }
+    except _RateLimitError as exc:
+        return {
+            "success": False,
+            "stage": "rate_limit",
+            "error": f"تم تجاوز الحد المجاني (429) — جرّب لاحقاً أو نموذجاً آخر — {exc}",
+            "elapsed_s": round(_t.time() - t0, 2),
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -810,6 +995,7 @@ async def test_generate_live(model_id: str, product: Optional[dict] = None) -> d
 
 
 async def get_available_models() -> list:
+    await _ensure_models_discovered()
     return [{"id": k, **v} for k, v in SUPPORTED_MODELS.items()]
 
 
@@ -822,6 +1008,8 @@ async def diagnose_ai() -> dict:
       - test_result: نتيجة استدعاء أول نموذج متاح بمدخل اختباري
     """
     from backend.config import get_api_key, is_key_from_env
+
+    await _ensure_models_discovered()
 
     providers = list({info["provider"] for info in SUPPORTED_MODELS.values()})
     configured = []
@@ -873,4 +1061,6 @@ async def diagnose_ai() -> dict:
         "priority_order": priority,
         "test_result": test_result,
         "healthy": bool(priority) and test_result.get("success", False),
+        "discovered_free_count": len(_OR_MODELS_CACHE.get("free_ordered", [])),
+        "dead_models": list(_DEAD_MODELS.keys()),
     }
