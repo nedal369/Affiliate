@@ -140,126 +140,6 @@
     </div>
   </div>
 
-  <!-- ══ Anthropic ══ -->
-  <div class="card mb-4" id="card-anthropic">
-    <div class="card-header">
-      <div class="flex items-center gap-3">
-        <span style="font-size: 24px;">🤖</span>
-        <div>
-          <div class="card-title">Anthropic (Claude)</div>
-          <div class="text-sm text-secondary">claude-opus-4-5 / claude-sonnet-4-5 / claude-haiku-4-5</div>
-        </div>
-      </div>
-      <span class="badge badge-neutral" id="status-anthropic">جاري التحقق...</span>
-    </div>
-    <div class="card-body">
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <div class="flex gap-2">
-          <div style="position: relative; flex: 1;">
-            <input type="password" class="form-control" id="key-anthropic" placeholder="sk-ant-api03-..." />
-            <button onclick="toggleVisibility('key-anthropic', 'eye-anthropic')"
-              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
-              id="eye-anthropic">👁</button>
-          </div>
-          <button class="btn btn-primary" data-save="anthropic" onclick="saveKey('anthropic', 'key-anthropic')">حفظ</button>
-        </div>
-        <div id="env-hint-anthropic" class="env-hint">ANTHROPIC_API_KEY</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="testKey('anthropic')">🔌 اختبار الاتصال</button>
-    </div>
-  </div>
-
-  <!-- ══ OpenAI ══ -->
-  <div class="card mb-4" id="card-openai">
-    <div class="card-header">
-      <div class="flex items-center gap-3">
-        <span style="font-size: 24px;">🧠</span>
-        <div>
-          <div class="card-title">OpenAI (GPT)</div>
-          <div class="text-sm text-secondary">gpt-4o / gpt-4o-mini / gpt-4-turbo</div>
-        </div>
-      </div>
-      <span class="badge badge-neutral" id="status-openai">جاري التحقق...</span>
-    </div>
-    <div class="card-body">
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <div class="flex gap-2">
-          <div style="position: relative; flex: 1;">
-            <input type="password" class="form-control" id="key-openai" placeholder="sk-..." />
-            <button onclick="toggleVisibility('key-openai', 'eye-openai')"
-              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
-              id="eye-openai">👁</button>
-          </div>
-          <button class="btn btn-primary" data-save="openai" onclick="saveKey('openai', 'key-openai')">حفظ</button>
-        </div>
-        <div id="env-hint-openai" class="env-hint">OPENAI_API_KEY</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="testKey('openai')">🔌 اختبار الاتصال</button>
-    </div>
-  </div>
-
-  <!-- ══ Google Gemini ══ -->
-  <div class="card mb-4" id="card-google">
-    <div class="card-header">
-      <div class="flex items-center gap-3">
-        <span style="font-size: 24px;">🔍</span>
-        <div>
-          <div class="card-title">Google (Gemini)</div>
-          <div class="text-sm text-secondary">gemini-1.5-pro / gemini-1.5-flash</div>
-        </div>
-      </div>
-      <span class="badge badge-neutral" id="status-google">جاري التحقق...</span>
-    </div>
-    <div class="card-body">
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <div class="flex gap-2">
-          <div style="position: relative; flex: 1;">
-            <input type="password" class="form-control" id="key-google" placeholder="AIza..." />
-            <button onclick="toggleVisibility('key-google', 'eye-google')"
-              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
-              id="eye-google">👁</button>
-          </div>
-          <button class="btn btn-primary" data-save="google" onclick="saveKey('google', 'key-google')">حفظ</button>
-        </div>
-        <div id="env-hint-google" class="env-hint">GOOGLE_API_KEY</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="testKey('google')">🔌 اختبار الاتصال</button>
-    </div>
-  </div>
-
-  <!-- ══ Groq ══ -->
-  <div class="card mb-4" id="card-groq">
-    <div class="card-header">
-      <div class="flex items-center gap-3">
-        <span style="font-size: 24px;">⚡</span>
-        <div>
-          <div class="card-title">Groq (Llama / Mixtral)</div>
-          <div class="text-sm text-secondary">llama-3.3-70b-versatile / mixtral-8x7b-32768</div>
-        </div>
-      </div>
-      <span class="badge badge-neutral" id="status-groq">جاري التحقق...</span>
-    </div>
-    <div class="card-body">
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <div class="flex gap-2">
-          <div style="position: relative; flex: 1;">
-            <input type="password" class="form-control" id="key-groq" placeholder="gsk_..." />
-            <button onclick="toggleVisibility('key-groq', 'eye-groq')"
-              style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;"
-              id="eye-groq">👁</button>
-          </div>
-          <button class="btn btn-primary" data-save="groq" onclick="saveKey('groq', 'key-groq')">حفظ</button>
-        </div>
-        <div id="env-hint-groq" class="env-hint">GROQ_API_KEY</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="testKey('groq')">🔌 اختبار الاتصال</button>
-    </div>
-  </div>
-
   <!-- ══ RapidAPI Amazon ══ -->
   <div class="card mb-4" id="card-rapidapi">
     <div class="card-header">
@@ -531,10 +411,6 @@ async function loadKeys() {
     const statusMap = {
       supabase_db_url:   'status-supabase_db_url',
       openrouter:        'status-openrouter',
-      anthropic:         'status-anthropic',
-      openai:            'status-openai',
-      google:            'status-google',
-      groq:              'status-groq',
       rapidapi_key:      'status-rapidapi_key',
       amazon_access_key: 'status-amazon_access_key',
       apify:             'status-apify',

@@ -225,10 +225,6 @@ async function initPage() {
 function renderProviders(diag) {
   const providers = [
     { key: 'openrouter', label: 'OpenRouter (مجاني/مدفوع)', icon: '🌐' },
-    { key: 'anthropic',  label: 'Anthropic (Claude)',       icon: '🟠' },
-    { key: 'openai',     label: 'OpenAI (GPT)',             icon: '🟢' },
-    { key: 'groq',       label: 'Groq (Llama)',             icon: '⚡' },
-    { key: 'google',     label: 'Google (Gemini)',          icon: '🔵' },
   ];
 
   const configured = new Set((diag.configured_providers || []).map(p => p.provider));

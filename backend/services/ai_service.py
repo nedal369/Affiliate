@@ -1,5 +1,5 @@
 """
-ai_service.py — توليد محتوى عربي جذاب باستخدام متعدد الـ LLM
+ai_service.py — توليد محتوى عربي جذاب عبر OpenRouter
 """
 import asyncio
 import logging
@@ -7,135 +7,85 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ── النماذج المدعومة ────────────────────────────────────────────────────────────
+# ── النماذج المدعومة (OpenRouter فقط) ─────────────────────────────────────────
 
 SUPPORTED_MODELS = {
-    # ── Anthropic ──────────────────────────────────────────
-    "claude-haiku-4-5": {
-        "provider": "anthropic",
-        "name": "Claude Haiku 4.5",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Claude Haiku 4.5 — سريع / جودة جيدة",
-    },
-    "claude-sonnet-4-5": {
-        "provider": "anthropic",
-        "name": "Claude Sonnet 4.5",
-        "speed": "medium",
-        "quality": "high",
-        "label": "Claude Sonnet 4.5 — متوسط / جودة عالية",
-    },
-    "claude-opus-4-5": {
-        "provider": "anthropic",
-        "name": "Claude Opus 4.5",
-        "speed": "slow",
-        "quality": "highest",
-        "label": "Claude Opus 4.5 — بطيء / جودة قصوى",
-    },
-    # ── OpenAI ─────────────────────────────────────────────
-    "gpt-4o-mini": {
-        "provider": "openai",
-        "name": "GPT-4o Mini",
-        "speed": "fast",
-        "quality": "good",
-        "label": "GPT-4o Mini — سريع / جودة جيدة",
-    },
-    "gpt-4o": {
-        "provider": "openai",
-        "name": "GPT-4o",
-        "speed": "medium",
-        "quality": "high",
-        "label": "GPT-4o — متوسط / جودة عالية",
-    },
-    # ── Groq (مجاني وسريع جداً) ────────────────────────────
-    "llama-3.3-70b-versatile": {
-        "provider": "groq",
-        "name": "Llama 3.3 70B (Groq)",
-        "speed": "fastest",
-        "quality": "good",
-        "label": "Llama 3.3 70B Groq — الأسرع / جودة جيدة",
-    },
-    # ── OpenRouter — مفتاح واحد لمئات النماذج ─────────────
-    # نماذج مجانية موثوقة (مُرتَّبة حسب الأولوية)
+    # ── مجانية (الأولوية الافتراضية) ──────────────────────
     "openrouter/meta-llama/llama-3.3-70b-instruct:free": {
         "provider": "openrouter",
         "name": "Llama 3.3 70B (مجاني)",
         "speed": "fast",
         "quality": "good",
-        "label": "Llama 3.3 70B via OpenRouter — مجاني / جودة جيدة",
+        "label": "Llama 3.3 70B — مجاني / جودة جيدة",
     },
     "openrouter/deepseek/deepseek-r1:free": {
         "provider": "openrouter",
         "name": "DeepSeek R1 (مجاني)",
         "speed": "medium",
         "quality": "high",
-        "label": "DeepSeek R1 via OpenRouter — مجاني / جودة عالية",
+        "label": "DeepSeek R1 — مجاني / جودة عالية",
     },
     "openrouter/deepseek/deepseek-chat:free": {
         "provider": "openrouter",
         "name": "DeepSeek Chat (مجاني)",
         "speed": "fast",
         "quality": "good",
-        "label": "DeepSeek Chat via OpenRouter — مجاني / جودة جيدة",
+        "label": "DeepSeek Chat — مجاني / جودة جيدة",
     },
     "openrouter/google/gemini-2.0-flash-001": {
         "provider": "openrouter",
-        "name": "Gemini 2.0 Flash (OpenRouter)",
+        "name": "Gemini 2.0 Flash",
         "speed": "fast",
         "quality": "high",
-        "label": "Gemini 2.0 Flash via OpenRouter — سريع / جودة عالية",
+        "label": "Gemini 2.0 Flash — سريع / جودة عالية",
     },
     "openrouter/google/gemini-flash-1.5": {
         "provider": "openrouter",
-        "name": "Gemini 1.5 Flash (OpenRouter)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Gemini 1.5 Flash via OpenRouter — سريع / جودة جيدة",
-    },
-    "openrouter/meta-llama/llama-3.3-70b-instruct": {
-        "provider": "openrouter",
-        "name": "Llama 3.3 70B (OpenRouter مدفوع)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Llama 3.3 70B via OpenRouter — مدفوع / جودة جيدة",
-    },
-    "openrouter/openai/gpt-4o-mini": {
-        "provider": "openrouter",
-        "name": "GPT-4o Mini (OpenRouter)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "GPT-4o Mini via OpenRouter — سريع / جودة جيدة",
-    },
-    "openrouter/anthropic/claude-3-haiku": {
-        "provider": "openrouter",
-        "name": "Claude 3 Haiku (OpenRouter)",
-        "speed": "fast",
-        "quality": "good",
-        "label": "Claude 3 Haiku via OpenRouter — سريع / جودة جيدة",
-    },
-    # ── Google مباشر ────────────────────────────────────────
-    "gemini-1.5-flash": {
-        "provider": "google",
         "name": "Gemini 1.5 Flash",
         "speed": "fast",
         "quality": "good",
         "label": "Gemini 1.5 Flash — سريع / جودة جيدة",
     },
-    "gemini-1.5-pro": {
-        "provider": "google",
-        "name": "Gemini 1.5 Pro",
+    # ── مدفوعة ─────────────────────────────────────────────
+    "openrouter/meta-llama/llama-3.3-70b-instruct": {
+        "provider": "openrouter",
+        "name": "Llama 3.3 70B (مدفوع)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Llama 3.3 70B — مدفوع / جودة جيدة",
+    },
+    "openrouter/openai/gpt-4o-mini": {
+        "provider": "openrouter",
+        "name": "GPT-4o Mini",
+        "speed": "fast",
+        "quality": "good",
+        "label": "GPT-4o Mini via OpenRouter — سريع / جودة جيدة",
+    },
+    "openrouter/openai/gpt-4o": {
+        "provider": "openrouter",
+        "name": "GPT-4o",
         "speed": "medium",
         "quality": "high",
-        "label": "Gemini 1.5 Pro — متوسط / جودة عالية",
+        "label": "GPT-4o via OpenRouter — متوسط / جودة عالية",
+    },
+    "openrouter/anthropic/claude-3-haiku": {
+        "provider": "openrouter",
+        "name": "Claude 3 Haiku",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Claude 3 Haiku via OpenRouter — سريع / جودة جيدة",
+    },
+    "openrouter/anthropic/claude-3.5-sonnet": {
+        "provider": "openrouter",
+        "name": "Claude 3.5 Sonnet",
+        "speed": "medium",
+        "quality": "high",
+        "label": "Claude 3.5 Sonnet via OpenRouter — متوسط / جودة عالية",
     },
 }
 
 # ربط اسم المزود بمفتاح API المقابل في config
 _PROVIDER_KEY_MAP = {
-    "anthropic":  "anthropic",
-    "openai":     "openai",
-    "google":     "google",
-    "groq":       "groq",
     "openrouter": "openrouter",
 }
 
@@ -267,130 +217,7 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
     return ordered
 
 
-# ── دوال الاستدعاء لكل مزوّد ────────────────────────────────────────────────────
-
-async def _call_anthropic(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
-    from backend.config import get_api_key
-    api_key = get_api_key("anthropic")
-    if not api_key:
-        raise ValueError("مفتاح Anthropic غير موجود")
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    message = await client.messages.create(
-        model=model_id,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    return message.content[0].text
-
-
-async def _call_openai(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
-    from backend.config import get_api_key
-    api_key = get_api_key("openai")
-    if not api_key:
-        raise ValueError("مفتاح OpenAI غير موجود")
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=api_key)
-    response = await client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=1024,
-    )
-    content = response.choices[0].message.content
-    if not content:
-        raise RuntimeError("OpenAI returned empty content")
-    return content
-
-
-_GEMINI_SAFETY_SETTINGS = [
-    {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
-]
-
-_GEMINI_FINISH_REASONS = {0: "UNSPECIFIED", 1: "STOP", 2: "MAX_TOKENS", 3: "SAFETY", 4: "RECITATION", 5: "OTHER"}
-
-
-async def _call_gemini(model_id: str, system_prompt: str, user_prompt: str) -> str:
-    from backend.config import get_api_key
-    api_key = get_api_key("google")
-    if not api_key:
-        raise ValueError("مفتاح Google Gemini غير موجود")
-    import google.generativeai as genai
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_id,
-        system_instruction=system_prompt,
-        safety_settings=_GEMINI_SAFETY_SETTINGS,
-    )
-    response = await asyncio.to_thread(model.generate_content, user_prompt)
-
-    if not response:
-        raise RuntimeError("Gemini returned None response")
-
-    pf = getattr(response, "prompt_feedback", None)
-    if pf:
-        block_reason = getattr(pf, "block_reason", None)
-        if block_reason:
-            raise RuntimeError(f"Gemini prompt blocked: {block_reason}")
-
-    candidates = getattr(response, "candidates", None)
-    if not candidates:
-        raise RuntimeError("Gemini returned no candidates (likely blocked)")
-
-    candidate = candidates[0]
-    finish_reason = getattr(candidate, "finish_reason", None)
-    fr_value = int(finish_reason) if finish_reason is not None else 0
-    fr_name = _GEMINI_FINISH_REASONS.get(fr_value, str(finish_reason))
-
-    if fr_value not in (1, 2):
-        raise RuntimeError(f"Gemini blocked content (finish_reason={fr_name})")
-
-    text = ""
-    try:
-        text = response.text or ""
-    except Exception as e:
-        try:
-            parts = getattr(candidate.content, "parts", []) or []
-            text = "".join(getattr(p, "text", "") for p in parts)
-        except Exception:
-            raise RuntimeError(f"Gemini text extraction failed: {e}")
-
-    if not text or len(text.strip()) < 10:
-        raise RuntimeError(f"Gemini returned empty/short text (finish={fr_name})")
-
-    return text
-
-
-async def _call_google(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
-    return await _call_gemini(model_id, system, user_prompt)
-
-
-async def _call_groq(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
-    from backend.config import get_api_key
-    api_key = get_api_key("groq")
-    if not api_key:
-        raise ValueError("مفتاح Groq غير موجود")
-    from groq import AsyncGroq
-    client = AsyncGroq(api_key=api_key)
-    response = await client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=1024,
-    )
-    content = response.choices[0].message.content
-    if not content:
-        raise RuntimeError("Groq returned empty content")
-    return content
+# ── دالة الاستدعاء — OpenRouter فقط ─────────────────────────────────────────
 
 
 async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
@@ -456,10 +283,6 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
 
 
 _PROVIDER_CALLERS = {
-    "anthropic":  _call_anthropic,
-    "openai":     _call_openai,
-    "google":     _call_google,
-    "groq":       _call_groq,
     "openrouter": _call_openrouter,
 }
 

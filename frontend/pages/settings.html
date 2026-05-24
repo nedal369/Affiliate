@@ -49,26 +49,20 @@ function setVal(key, el) {
 function renderSettings() {
   const s = settingsData;
 
-  // تجميع النماذج حسب المزود
-  const providerLabels = {
-    openrouter: '🌐 OpenRouter',
-    anthropic:  '🟣 Anthropic (Claude)',
-    openai:     '🟢 OpenAI (ChatGPT)',
-    groq:       '⚡ Groq (مجاني وسريع)',
-    google:     '🔵 Google (Gemini)',
-  };
-  const grouped = {};
-  aiModels.forEach(m => {
-    const p = m.provider || 'other';
-    if (!grouped[p]) grouped[p] = [];
-    grouped[p].push(m);
-  });
-  const providerOrder = ['openrouter', 'groq', 'anthropic', 'openai', 'google'];
-  let modelsOptions = `<option value="" ${!s.primary_llm ? 'selected' : ''}>🤖 تلقائي — يختار حسب المفاتيح المتاحة</option>`;
-  for (const prov of providerOrder) {
-    if (!grouped[prov] || !grouped[prov].length) continue;
-    modelsOptions += `<optgroup label="${providerLabels[prov] || prov}">`;
-    modelsOptions += grouped[prov].map(m =>
+  // نماذج OpenRouter
+  let modelsOptions = `<option value="" ${!s.primary_llm ? 'selected' : ''}>🤖 تلقائي — يختار أفضل نموذج متاح</option>`;
+  const freeModels  = aiModels.filter(m => m.id.includes(':free'));
+  const paidModels  = aiModels.filter(m => !m.id.includes(':free'));
+  if (freeModels.length) {
+    modelsOptions += '<optgroup label="✅ مجانية">';
+    modelsOptions += freeModels.map(m =>
+      `<option value="${m.id}" ${s.primary_llm === m.id ? 'selected' : ''}>${m.label || m.name}</option>`
+    ).join('');
+    modelsOptions += '</optgroup>';
+  }
+  if (paidModels.length) {
+    modelsOptions += '<optgroup label="💳 مدفوعة">';
+    modelsOptions += paidModels.map(m =>
       `<option value="${m.id}" ${s.primary_llm === m.id ? 'selected' : ''}>${m.label || m.name}</option>`
     ).join('');
     modelsOptions += '</optgroup>';
