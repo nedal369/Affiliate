@@ -82,6 +82,27 @@ SUPPORTED_MODELS = {
         "quality": "high",
         "label": "Claude 3.5 Sonnet via OpenRouter — متوسط / جودة عالية",
     },
+    "openrouter/mistralai/mistral-7b-instruct:free": {
+        "provider": "openrouter",
+        "name": "Mistral 7B (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Mistral 7B — مجاني / سريع",
+    },
+    "openrouter/qwen/qwen-2.5-72b-instruct:free": {
+        "provider": "openrouter",
+        "name": "Qwen 2.5 72B (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Qwen 2.5 72B — مجاني / جودة جيدة",
+    },
+    "openrouter/microsoft/phi-3-medium-128k-instruct:free": {
+        "provider": "openrouter",
+        "name": "Phi-3 Medium (مجاني)",
+        "speed": "fast",
+        "quality": "good",
+        "label": "Phi-3 Medium — مجاني / سريع",
+    },
 }
 
 # ربط اسم المزود بمفتاح API المقابل في config
@@ -173,10 +194,15 @@ DEAL_OF_DAY_FALLBACK = """⭐ عرض اليوم فقط!
 # ── اكتشاف المفاتيح المتاحة ───────────────────────────────────────────────────
 
 # نماذج OpenRouter المجانية — تُستخدم كـ fallback افتراضي عند عدم ضبط أي شيء
+# مرتّبة بحيث تتوزّع على مزوّدين مختلفين لتقليل احتمال 429 المتزامن
 _FREE_OPENROUTER_DEFAULTS = [
     "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/google/gemini-2.0-flash-001",
     "openrouter/deepseek/deepseek-r1:free",
+    "openrouter/google/gemini-flash-1.5",
     "openrouter/deepseek/deepseek-chat:free",
+    "openrouter/mistralai/mistral-7b-instruct:free",
+    "openrouter/qwen/qwen-2.5-72b-instruct:free",
 ]
 
 
@@ -220,6 +246,10 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 # ── دالة الاستدعاء — OpenRouter فقط ─────────────────────────────────────────
 
 
+class _RateLimitError(RuntimeError):
+    """429 من OpenRouter — يُميّزه generate_content لإضافة تأخير قبل المحاولة التالية."""
+
+
 async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM_PROMPT) -> str:
     """
     OpenRouter — بوابة موحّدة.  model_id بصيغة: openrouter/provider/model-name[:free]
@@ -233,7 +263,6 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
     actual_model = model_id.removeprefix("openrouter/")
 
     import httpx
-    # timeout يُحدَّد من generate_content عبر asyncio.wait_for — هنا نضع قيمة كبيرة
     async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=10.0)) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -250,11 +279,13 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
                     {"role": "user",   "content": user_prompt},
                 ],
                 "max_tokens": 1024,
+                # يسمح لـ OpenRouter بتجربة مزوّدين بديلين تلقائياً
+                "provider": {"allow_fallbacks": True},
             },
         )
 
     if resp.status_code == 429:
-        raise RuntimeError(f"OpenRouter rate limit (429): {resp.text[:120]}")
+        raise _RateLimitError(f"rate limit 429 — {actual_model}")
     if resp.status_code == 402:
         raise RuntimeError("OpenRouter: رصيد غير كافٍ (402) — تحقق من حسابك")
     if resp.status_code != 200:
@@ -268,7 +299,11 @@ async def _call_openrouter(model_id: str, user_prompt: str, system: str = SYSTEM
     # OpenRouter يُرجع أحياناً {"error": {...}} حتى مع status 200
     if "error" in data:
         err = data["error"]
-        raise RuntimeError(f"OpenRouter error: {err.get('message', str(err))[:120]}")
+        code = err.get("code") or 0
+        msg = err.get("message", str(err))
+        if code == 429 or "rate" in str(msg).lower():
+            raise _RateLimitError(f"rate limit (error body) — {actual_model}")
+        raise RuntimeError(f"OpenRouter error: {msg[:120]}")
 
     choices = data.get("choices") or []
     if not choices:
@@ -479,6 +514,10 @@ async def generate_content(product: dict, llm: str = "auto") -> tuple[str, str]:
         except asyncio.TimeoutError:
             last_error = RuntimeError(f"timeout بعد {_timeout}s")
             logger.warning(f"تجاوز الوقت {model_id} — ننتقل للنموذج التالي")
+        except _RateLimitError as exc:
+            last_error = exc
+            logger.warning(f"rate limit 429 لـ {model_id} — انتظار ثانية ثم المحاولة التالية")
+            await asyncio.sleep(1)
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id}: {exc}")
@@ -595,6 +634,10 @@ async def generate_deal_of_day_content(product: dict, llm: str = "auto") -> tupl
         except asyncio.TimeoutError:
             last_error = RuntimeError(f"timeout بعد {_timeout}s")
             logger.warning(f"تجاوز الوقت {model_id} (عرض اليوم)")
+        except _RateLimitError as exc:
+            last_error = exc
+            logger.warning(f"rate limit 429 لـ {model_id} (عرض اليوم) — انتظار ثانية")
+            await asyncio.sleep(1)
         except Exception as exc:
             last_error = exc
             logger.warning(f"فشل {model_id} (عرض اليوم): {exc}")
