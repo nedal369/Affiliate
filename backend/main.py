@@ -1474,11 +1474,11 @@ async def discover_deals(body: DiscoverDealsBody, request: Request):
         from backend.services.deals_finder_service import discover_deals as _discover
         results = await asyncio.wait_for(
             _discover(body.category_ids, seen_asins=body.seen_asins),
-            timeout=90.0,
+            timeout=180.0,
         )
         return {"success": True, "results": results}
     except asyncio.TimeoutError:
-        raise HTTPException(504, "انتهت مهلة البحث (90 ثانية) — قد يكون Amazon يحجب الطلبات من هذا الخادم")
+        raise HTTPException(504, "انتهت مهلة البحث (180 ثانية) — قد يكون Amazon يحجب الطلبات من هذا الخادم")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:

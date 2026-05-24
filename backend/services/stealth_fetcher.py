@@ -61,11 +61,19 @@ def _check_scrapling() -> bool:
     return _scrapling_available
 
 
-def is_blocked_html(html: str, status: int) -> bool:
+def _extract_html(response) -> str:
+    """يستخرج HTML من Scrapling Response (لا يحتوي على .status)."""
+    html = getattr(response, "body", None) or getattr(response, "html_content", None) or ""
+    if isinstance(html, bytes):
+        html = html.decode("utf-8", errors="replace")
+    return html
+
+
+def is_blocked_html(html: str, status: int = 200) -> bool:
     """منطق كشف الحظر — نفس المعايير المستخدمة في amazon_scraper._is_blocked."""
     if status in (403, 503):
         return True
-    if len(html) < 5000:
+    if not html or len(html) < 5000:
         return True
     lower = html.lower()
     return any(x in lower for x in (
@@ -76,7 +84,11 @@ def is_blocked_html(html: str, status: int) -> bool:
 
 
 async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
-    """Scrapling Fetcher — curl_cffi مع بصمة TLS لـ Chrome."""
+    """
+    Scrapling Fetcher — curl_cffi مع بصمة TLS لـ Chrome.
+    يُرجع (html, 200) عند النجاح أو ("", -1) عند الفشل.
+    Note: Fetcher.get مزامن — نشغّله في thread لتفادي حجب event loop.
+    """
     if not _check_scrapling():
         return "", -1
 
@@ -88,7 +100,6 @@ async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
 
     async with _get_fast_semaphore():
         try:
-            # Scrapling Fetcher.get مزامن — نشغّله في thread لتفادي حجب event loop
             response = await asyncio.to_thread(
                 Fetcher.get,
                 url,
@@ -96,10 +107,9 @@ async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
                 follow_redirects=True,
                 timeout=int(timeout),
             )
-            html = getattr(response, "body", None) or getattr(response, "html_content", None) or ""
-            if isinstance(html, bytes):
-                html = html.decode("utf-8", errors="replace")
-            status = getattr(response, "status", 0) or 0
+            html = _extract_html(response)
+            # Fetcher.get لا يُرجع status — استنتجه من HTML
+            status = 200 if html else 0
             return html, status
         except Exception as exc:
             logger.warning(f"Scrapling fast فشل {url}: {exc}")
@@ -107,7 +117,11 @@ async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
 
 
 async def _fetch_stealth(url: str, timeout: float = 60.0) -> tuple[str, int]:
-    """Scrapling StealthyFetcher — متصفّح Camoufox headless كامل."""
+    """
+    Scrapling StealthyFetcher — متصفّح Camoufox headless كامل.
+    يستخدم async_fetch الأصلي (لا asyncio.to_thread).
+    timeout بالثواني (وليس ms).
+    """
     global _stealth_available
     if not _check_scrapling():
         return "", -1
@@ -124,24 +138,21 @@ async def _fetch_stealth(url: str, timeout: float = 60.0) -> tuple[str, int]:
 
     async with _get_stealth_semaphore():
         try:
-            response = await asyncio.to_thread(
-                StealthyFetcher.fetch,
+            response = await StealthyFetcher.async_fetch(
                 url,
                 headless=True,
                 network_idle=True,
-                timeout=int(timeout * 1000),  # StealthyFetcher يقبل ms
+                timeout=int(timeout),   # ثواني (وليس ms)
                 humanize=True,
             )
-            html = getattr(response, "body", None) or getattr(response, "html_content", None) or ""
-            if isinstance(html, bytes):
-                html = html.decode("utf-8", errors="replace")
-            status = getattr(response, "status", 0) or 0
+            html = _extract_html(response)
+            status = 200 if html else 0
             if _stealth_available is None:
                 _stealth_available = True
             return html, status
         except Exception as exc:
             msg = str(exc).lower()
-            if "camoufox" in msg or "executable" in msg or "playwright" in msg or "browser" in msg:
+            if any(k in msg for k in ("camoufox", "executable", "playwright", "browser", "binary")):
                 _stealth_available = False
                 logger.warning(
                     f"StealthyFetcher: المتصفّح غير مثبّت ({exc}). "
@@ -166,10 +177,11 @@ async def stealth_fetch(url: str, mode: str = "auto", timeout: float = 30.0) -> 
 
     # auto: fast أولاً، ثم stealth عند الحظر/الفشل
     html, status = await _fetch_fast(url, timeout=timeout)
-    if html and status == 200 and not is_blocked_html(html, status):
+    if html and not is_blocked_html(html, status):
+        logger.info(f"stealth_fetch: fast نجح ({len(html)} chars): {url}")
         return html, status
 
-    logger.info(f"stealth_fetch: fast فشل ({status}) — التحوّل لـ stealth: {url}")
+    logger.info(f"stealth_fetch: fast فشل ({status}, {len(html)} chars) — التحوّل لـ stealth: {url}")
     return await _fetch_stealth(url, timeout=max(timeout, 60.0))
 
 
@@ -186,7 +198,7 @@ async def diagnose(url: str) -> dict:
         "status": status,
         "html_length": len(html),
         "elapsed_s": round(_t.time() - t0, 2),
-        "blocked": is_blocked_html(html, status) if html else None,
+        "blocked": is_blocked_html(html, status) if html else True,
         "success": bool(html and not is_blocked_html(html, status)),
     })
 
@@ -198,7 +210,7 @@ async def diagnose(url: str) -> dict:
         "status": status,
         "html_length": len(html),
         "elapsed_s": round(_t.time() - t0, 2),
-        "blocked": is_blocked_html(html, status) if html else None,
+        "blocked": is_blocked_html(html, status) if html else True,
         "success": bool(html and not is_blocked_html(html, status)),
     })
 
