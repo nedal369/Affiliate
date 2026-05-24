@@ -239,6 +239,7 @@ _CHEAP_PAID_OPENROUTER = [
     "openrouter/anthropic/claude-3-haiku",         # ~$0.25/M — رخيص
 ]
 
+
 # ── الاكتشاف الديناميكي لنماذج OpenRouter ──────────────────────────────────
 # يُحدَّث كل ساعة عبر /api/v1/models. يحتفظ فقط بالنماذج المتاحة فعلاً.
 _OR_MODELS_CACHE: dict = {"ts": 0.0, "free_ordered": [], "all_ids": set()}
