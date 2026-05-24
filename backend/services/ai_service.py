@@ -68,7 +68,7 @@ SUPPORTED_MODELS = {
         "quality": "good",
         "label": "Qwen 2.5 72B — مجاني / جودة جيدة",
     },
-    # ── مدفوعة ─────────────────────────────────────────────
+    # ── مدفوعة رخيصة ───────────────────────────────────────
     "openrouter/google/gemini-2.0-flash-001": {
         "provider": "openrouter",
         "name": "Gemini 2.0 Flash (مدفوع)",
@@ -89,6 +89,13 @@ SUPPORTED_MODELS = {
         "speed": "fast",
         "quality": "good",
         "label": "Llama 3.3 70B — مدفوع / جودة جيدة",
+    },
+    "openrouter/deepseek/deepseek-chat": {
+        "provider": "openrouter",
+        "name": "DeepSeek Chat V3 (مدفوع)",
+        "speed": "fast",
+        "quality": "high",
+        "label": "DeepSeek Chat V3 — مدفوع رخيص / جودة عالية",
     },
     "openrouter/openai/gpt-4o-mini": {
         "provider": "openrouter",
@@ -220,6 +227,18 @@ _FREE_OPENROUTER_DEFAULTS = [
     "openrouter/qwen/qwen-2.5-72b-instruct:free",
     "openrouter/deepseek/deepseek-r1:free",
 ]
+
+# نماذج مدفوعة رخيصة — تُستخدم تلقائياً كطبقة ثالثة بعد فشل المجانية
+# الترتيب: الأرخص تكلفة أولاً
+_CHEAP_PAID_OPENROUTER = [
+    "openrouter/google/gemini-2.0-flash-001",      # ~$0.10/M tokens — الأرخص والأسرع
+    "openrouter/google/gemini-flash-1.5",           # ~$0.075/M — رخيص جداً
+    "openrouter/deepseek/deepseek-chat",            # ~$0.14/M — رخيص + جودة ممتازة
+    "openrouter/meta-llama/llama-3.3-70b-instruct", # ~$0.20/M — رخيص
+    "openrouter/openai/gpt-4o-mini",               # ~$0.15/M — رخيص
+    "openrouter/anthropic/claude-3-haiku",         # ~$0.25/M — رخيص
+]
+
 
 # ── الاكتشاف الديناميكي لنماذج OpenRouter ──────────────────────────────────
 # يُحدَّث كل ساعة عبر /api/v1/models. يحتفظ فقط بالنماذج المتاحة فعلاً.
@@ -379,6 +398,11 @@ def _build_model_priority(custom_system: bool = False) -> list[str]:
 
     # ④ القائمة الاحتياطية الثابتة (في حال فشل الاكتشاف)
     for mid in _FREE_OPENROUTER_DEFAULTS:
+        if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
+            ordered.append(mid)
+
+    # ⑤ النماذج المدفوعة الرخيصة — طبقة أخيرة تضمن نجاح التوليد دائماً
+    for mid in _CHEAP_PAID_OPENROUTER:
         if mid not in ordered and mid in SUPPORTED_MODELS and key_available(mid):
             ordered.append(mid)
 
