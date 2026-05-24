@@ -23,11 +23,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Semaphore منفصل: stealth يستخدم متصفّح حقيقي، نحدّه بـ 2 طلب متوازٍ
 _STEALTH_SEMAPHORE: Optional[asyncio.Semaphore] = None
 _FAST_SEMAPHORE: Optional[asyncio.Semaphore] = None
 
-# تتبّع توافر Scrapling لتفادي إعادة محاولة الاستيراد عند كل طلب
 _scrapling_available: Optional[bool] = None
 _stealth_available: Optional[bool] = None
 
@@ -47,7 +45,6 @@ def _get_fast_semaphore() -> asyncio.Semaphore:
 
 
 def _check_scrapling() -> bool:
-    """يفحص توافر scrapling مرة واحدة ويُخزّن النتيجة."""
     global _scrapling_available
     if _scrapling_available is not None:
         return _scrapling_available
@@ -83,7 +80,7 @@ def is_blocked_html(html: str, status: int = 200) -> bool:
     ))
 
 
-async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
+async def _fetch_fast(url: str, timeout: float = 20.0) -> tuple[str, int]:
     """
     Scrapling Fetcher — curl_cffi مع بصمة TLS لـ Chrome.
     يُرجع (html, 200) عند النجاح أو ("", -1) عند الفشل.
@@ -108,7 +105,6 @@ async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
                 timeout=int(timeout),
             )
             html = _extract_html(response)
-            # Fetcher.get لا يُرجع status — استنتجه من HTML
             status = 200 if html else 0
             return html, status
         except Exception as exc:
@@ -116,7 +112,7 @@ async def _fetch_fast(url: str, timeout: float = 30.0) -> tuple[str, int]:
             return "", -1
 
 
-async def _fetch_stealth(url: str, timeout: float = 60.0) -> tuple[str, int]:
+async def _fetch_stealth(url: str, timeout: float = 45.0) -> tuple[str, int]:
     """
     Scrapling StealthyFetcher — متصفّح Camoufox headless كامل.
     يستخدم async_fetch الأصلي (لا asyncio.to_thread).
@@ -163,7 +159,7 @@ async def _fetch_stealth(url: str, timeout: float = 60.0) -> tuple[str, int]:
             return "", -1
 
 
-async def stealth_fetch(url: str, mode: str = "auto", timeout: float = 30.0) -> tuple[str, int]:
+async def stealth_fetch(url: str, mode: str = "auto", timeout: float = 20.0) -> tuple[str, int]:
     """
     البوابة الرئيسية — تُرجع (html, status).
     mode: "fast" | "stealth" | "auto"
@@ -173,7 +169,7 @@ async def stealth_fetch(url: str, mode: str = "auto", timeout: float = 30.0) -> 
         return await _fetch_fast(url, timeout=timeout)
 
     if mode == "stealth":
-        return await _fetch_stealth(url, timeout=max(timeout, 60.0))
+        return await _fetch_stealth(url, timeout=max(timeout, 45.0))
 
     # auto: fast أولاً، ثم stealth عند الحظر/الفشل
     html, status = await _fetch_fast(url, timeout=timeout)
@@ -182,7 +178,7 @@ async def stealth_fetch(url: str, mode: str = "auto", timeout: float = 30.0) -> 
         return html, status
 
     logger.info(f"stealth_fetch: fast فشل ({status}, {len(html)} chars) — التحوّل لـ stealth: {url}")
-    return await _fetch_stealth(url, timeout=max(timeout, 60.0))
+    return await _fetch_stealth(url, timeout=max(timeout, 45.0))
 
 
 async def diagnose(url: str) -> dict:
@@ -190,7 +186,6 @@ async def diagnose(url: str) -> dict:
     import time as _t
     report: dict = {"url": url, "scrapling_installed": _check_scrapling(), "layers": []}
 
-    # طبقة fast
     t0 = _t.time()
     html, status = await _fetch_fast(url)
     report["layers"].append({
@@ -198,11 +193,10 @@ async def diagnose(url: str) -> dict:
         "status": status,
         "html_length": len(html),
         "elapsed_s": round(_t.time() - t0, 2),
-        "blocked": is_blocked_html(html, status) if html else True,
+        "blocked": is_blocked_html(html, status),
         "success": bool(html and not is_blocked_html(html, status)),
     })
 
-    # طبقة stealth
     t0 = _t.time()
     html, status = await _fetch_stealth(url)
     report["layers"].append({
@@ -210,7 +204,7 @@ async def diagnose(url: str) -> dict:
         "status": status,
         "html_length": len(html),
         "elapsed_s": round(_t.time() - t0, 2),
-        "blocked": is_blocked_html(html, status) if html else True,
+        "blocked": is_blocked_html(html, status),
         "success": bool(html and not is_blocked_html(html, status)),
     })
 
