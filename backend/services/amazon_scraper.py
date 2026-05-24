@@ -169,7 +169,7 @@ async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
     """
     global _blocked_until
     from backend.config import get_setting
-    from backend.services.stealth_fetcher import stealth_fetch
+    from backend.services.stealth_fetcher import stealth_fetch, is_blocked_html
 
     strategy = get_setting("scraper_strategy", "cascade") or "cascade"
 
@@ -189,19 +189,19 @@ async def _fetch(url: str, retries: int = 2) -> tuple[str, int]:
                 _blocked_until = time.monotonic() + _BLOCK_DURATION
             return "", status
 
-    # ── الطبقة ②: Scrapling fast ────────────────────────────────────────
+    # ── الطبقة ②: Scrapling fast (curl_cffi + TLS impersonation) ───────────
     logger.info(f"Scraper: aiohttp فشل — أحاول Scrapling fast: {url}")
-    html, status = await stealth_fetch(url, mode="fast", timeout=30.0)
-    if html and status == 200 and not _is_blocked(html, status):
+    html, status = await stealth_fetch(url, mode="fast", timeout=20.0)
+    if html and not is_blocked_html(html, status) and not _is_blocked(html, status):
         logger.info(f"Scraper: ✓ Scrapling fast نجح ({len(html)} bytes)")
-        return html, status
+        return html, 200
 
-    # ── الطبقة ③: Scrapling stealth (متصفّح كامل) ───────────────────────
+    # ── الطبقة ③: Scrapling stealth (متصفّح Camoufox كامل) ─────────────
     logger.info(f"Scraper: fast فشل — أحاول Scrapling stealth: {url}")
-    html, status = await stealth_fetch(url, mode="stealth", timeout=60.0)
+    html, status = await stealth_fetch(url, mode="stealth", timeout=45.0)
     if html and not _is_blocked(html, status):
         logger.info(f"Scraper: ✓ Scrapling stealth نجح ({len(html)} bytes)")
-        return html, status
+        return html, 200
 
     # كل الطبقات فشلت — فعّل backoff ليتحوّل النظام لـ RapidAPI/cache
     logger.warning(f"Scraper: كل الطبقات فشلت ({url}) — backoff {_BLOCK_DURATION}s")
