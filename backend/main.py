@@ -1204,6 +1204,18 @@ async def get_ai_models():
     return await get_available_models()
 
 
+class AITestBody(BaseModel):
+    model_id: str
+    product: Optional[dict] = None
+
+
+@app.post("/api/ai/test-generate")
+async def ai_test_generate(body: AITestBody):
+    """اختبار حي لنموذج AI محدد — يُرجع تفاصيل كاملة عن النجاح أو سبب الفشل"""
+    from backend.services.ai_service import test_generate_live
+    return await test_generate_live(body.model_id, body.product)
+
+
 # ── الحسابات المراقبة ─────────────────────────────────────────────────────────────
 @app.get("/api/accounts")
 async def get_accounts():

@@ -810,8 +810,8 @@ async def test_model(model_id: str) -> dict:
     }
     try:
         content, used_model = await generate_content(sample, llm=model_id)
-        if used_model == "fallback-template":
-            return {"success": False, "message": "فشل التوليد — تحقق من صلاحية المفتاح"}
+        if used_model.startswith("fallback"):
+            return {"success": False, "message": f"فشل التوليد — {used_model}"}
         return {
             "success": True,
             "message": f"متصل ✓ — {used_model} جاهز",
@@ -819,6 +819,112 @@ async def test_model(model_id: str) -> dict:
         }
     except Exception as exc:
         return {"success": False, "message": str(exc)}
+
+
+async def test_generate_live(model_id: str, product: Optional[dict] = None) -> dict:
+    """
+    اختبار حي لنموذج معيّن — يُرجع تفاصيل كاملة عن النجاح أو سبب الفشل الدقيق.
+    """
+    import time as _t
+    from backend.config import get_api_key
+
+    sample = product or {
+        "title": "سماعات سوني اللاسلكية WH-1000XM5",
+        "price_original": 1299.0,
+        "price_current": 849.0,
+        "discount_pct": 35,
+        "rating": 4.7,
+        "rating_count": 5823,
+        "affiliate_url": "https://www.amazon.sa/dp/B09XS7JWHH?tag=demo-21",
+    }
+
+    # التحقق من وجود النموذج
+    if model_id not in SUPPORTED_MODELS:
+        return {
+            "success": False,
+            "stage": "validation",
+            "error": f"النموذج {model_id!r} غير موجود في القائمة المدعومة",
+        }
+
+    info = SUPPORTED_MODELS[model_id]
+    provider = info["provider"]
+    service = _PROVIDER_KEY_MAP.get(provider, provider)
+    api_key = get_api_key(service)
+
+    if not api_key:
+        return {
+            "success": False,
+            "stage": "api_key",
+            "error": f"مفتاح API للمزوّد '{provider}' غير موجود — أضفه من صفحة مفاتيح API",
+            "provider": provider,
+            "service_key": service,
+        }
+
+    caller = _PROVIDER_CALLERS.get(provider)
+    if not caller:
+        return {
+            "success": False,
+            "stage": "caller",
+            "error": f"لا يوجد handler للمزوّد '{provider}'",
+        }
+
+    user_prompt = USER_PROMPT_TEMPLATE.format(
+        title=sample.get("title", ""),
+        price_original=sample.get("price_original", 0),
+        price_current=sample.get("price_current", 0),
+        discount_pct=sample.get("discount_pct", 0),
+        rating_line=_rating_line(sample),
+        offers_block=_offers_block_for_prompt(sample),
+        rating_instruction=_rating_instruction(sample),
+        offers_instruction=_offers_instruction(sample),
+        telegram_link="",
+        affiliate_url=sample.get("affiliate_url", ""),
+    )
+
+    _timeout = _model_timeout(model_id)
+    t0 = _t.time()
+    try:
+        async with _AI_SEMAPHORE:
+            content = await asyncio.wait_for(
+                caller(model_id, user_prompt),
+                timeout=_timeout,
+            )
+        elapsed = round(_t.time() - t0, 2)
+
+        if not content or len(content.strip()) < 30:
+            return {
+                "success": False,
+                "stage": "content_check",
+                "error": f"المحتوى المُولَّد قصير جداً أو فارغ (طول={len(content) if content else 0})",
+                "raw": content or "",
+                "elapsed_s": elapsed,
+            }
+
+        return {
+            "success": True,
+            "model_id": model_id,
+            "provider": provider,
+            "elapsed_s": elapsed,
+            "content_length": len(content),
+            "preview": content[:300],
+            "full_content": content,
+        }
+
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "stage": "timeout",
+            "error": f"انتهت المهلة الزمنية بعد {_timeout}ث — النموذج بطيء أو غير متاح",
+            "elapsed_s": round(_t.time() - t0, 2),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "stage": "api_call",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "elapsed_s": round(_t.time() - t0, 2),
+        }
 
 
 async def get_available_models() -> list:

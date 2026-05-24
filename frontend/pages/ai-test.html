@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>اختبار الذكاء الاصطناعي</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg, #f5f5f5); color: var(--text-primary, #111); }
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 22px; font-weight: 700; }
+    .page-header p  { color: var(--text-secondary, #666); font-size: 14px; margin-top: 4px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 12px; padding: 20px; }
+    .card-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .card-title span { font-size: 18px; }
+
+    .status-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border, #e5e7eb); font-size: 13px; }
+    .status-row:last-child { border-bottom: none; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot-green  { background: #22c55e; }
+    .dot-red    { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-gray   { background: #9ca3af; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .badge-green  { background: #dcfce7; color: #166534; }
+    .badge-red    { background: #fee2e2; color: #991b1b; }
+    .badge-yellow { background: #fef3c7; color: #92400e; }
+    .badge-blue   { background: #dbeafe; color: #1e40af; }
+
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .15s; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn-primary  { background: var(--accent, #6366f1); color: #fff; }
+    .btn-secondary{ background: var(--surface, #fff); color: var(--text-primary, #111); border: 1px solid var(--border, #e5e7eb); }
+    .btn-success  { background: #22c55e; color: #fff; }
+    .btn-danger   { background: #ef4444; color: #fff; }
+
+    select, input, textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px; font-size: 13px; background: var(--bg, #f9fafb);
+      color: var(--text-primary, #111); font-family: inherit;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary, #555); margin-bottom: 4px; }
+    .form-group { margin-bottom: 12px; }
+
+    .result-box {
+      border-radius: 10px; padding: 14px 16px; margin-top: 14px;
+      font-size: 13px; white-space: pre-wrap; word-break: break-word;
+      display: none;
+    }
+    .result-success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+    .result-error   { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+    .result-info    { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
+
+    .content-preview {
+      background: var(--bg, #f9fafb); border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px; padding: 14px; font-size: 13px; line-height: 1.7;
+      white-space: pre-wrap; margin-top: 10px; max-height: 400px; overflow-y: auto;
+      direction: rtl; display: none;
+    }
+
+    .model-pill {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 600; border: 1px solid var(--border, #e5e7eb);
+      cursor: pointer; margin: 3px; transition: all .12s;
+    }
+    .model-pill:hover  { background: var(--accent, #6366f1); color: #fff; border-color: transparent; }
+    .model-pill.active { background: var(--accent, #6366f1); color: #fff; border-color: transparent; }
+
+    .priority-item {
+      display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+      border-radius: 8px; font-size: 13px; background: var(--bg, #f9fafb);
+      border: 1px solid var(--border, #e5e7eb); margin-bottom: 6px;
+    }
+    .priority-num { font-size: 11px; font-weight: 700; color: var(--text-tertiary, #888); width: 18px; text-align: center; }
+
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .section-sep { border: none; border-top: 1px solid var(--border, #e5e7eb); margin: 20px 0; }
+    .meta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .meta-chip { background: var(--bg, #f3f4f6); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--text-secondary, #555); }
+  </style>
+</head>
+<body>
+<div class="page-header">
+  <h1>🤖 اختبار الذكاء الاصطناعي</h1>
+  <p>تشخيص شامل لمزوّدي AI وتوليد محتوى تجريبي لمعرفة جذر المشكلة</p>
+</div>
+
+<!-- ─── صف 1: حالة المزوّدين + أولوية النماذج ─── -->
+<div class="grid-2" style="margin-bottom: 16px;">
+
+  <!-- حالة المزوّدين -->
+  <div class="card">
+    <div class="card-title"><span>🔑</span> حالة مفاتيح API</div>
+    <div id="providers-list">
+      <div style="color:var(--text-secondary,#888);font-size:13px;">جاري التحقق...</div>
+    </div>
+    <div style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
+      <button class="btn btn-primary" onclick="runDiagnostics()">
+        🔍 فحص شامل
+      </button>
+      <button class="btn btn-secondary" onclick="window.navigateTo && window.navigateTo('api-keys')">
+        🔑 إدارة المفاتيح
+      </button>
+    </div>
+  </div>
+
+  <!-- أولوية النماذج -->
+  <div class="card">
+    <div class="card-title"><span>📋</span> ترتيب النماذج عند التوليد</div>
+    <div id="priority-list">
+      <div style="color:var(--text-secondary,#888);font-size:13px;">جاري التحميل...</div>
+    </div>
+    <div id="no-models-warning" class="result-box result-error" style="display:none;">
+      ⚠️ لا توجد نماذج AI مضبوطة!<br>
+      يجب إضافة مفتاح API لأحد المزوّدين حتى يعمل التوليد.<br>
+      أسهل خيار: أضف مفتاح <strong>OpenRouter</strong> (مجاني).
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── صف 2: اختبار نموذج محدد ─── -->
+<div class="card" style="margin-bottom: 16px;">
+  <div class="card-title"><span>🧪</span> اختبار نموذج بعينه</div>
+
+  <div class="grid-2">
+    <div>
+      <div class="form-group">
+        <label>اختر النموذج</label>
+        <select id="select-model" onchange="onModelChange()">
+          <option value="">-- اختر نموذجاً --</option>
+        </select>
+      </div>
+
+      <div id="model-provider-info" style="font-size:12px;color:var(--text-secondary,#777);margin-bottom: 12px;"></div>
+
+      <div class="form-group">
+        <label>اسم المنتج (اختياري)</label>
+        <input type="text" id="test-title" value="سماعات سوني اللاسلكية WH-1000XM5" />
+      </div>
+      <div style="display:flex; gap: 8px;">
+        <div class="form-group" style="flex:1;">
+          <label>السعر الأصلي</label>
+          <input type="number" id="test-price-orig" value="1299" />
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>السعر الحالي</label>
+          <input type="number" id="test-price-cur" value="849" />
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>الخصم %</label>
+          <input type="number" id="test-discount" value="35" />
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btn-test-model" onclick="testModel()" style="width:100%;">
+        ▶ تشغيل الاختبار
+      </button>
+    </div>
+
+    <div>
+      <div id="test-result" class="result-box"></div>
+      <div id="test-content-preview" class="content-preview"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── صف 3: اختبار pipeline كامل ─── -->
+<div class="card" style="margin-bottom: 16px;">
+  <div class="card-title"><span>⚡</span> اختبار Pipeline الكامل (generate_content)</div>
+  <p style="font-size:13px;color:var(--text-secondary,#666);margin-bottom: 14px;">
+    هذا يحاكي بالضبط ما يحدث عند إضافة منتج للقائمة — يجرّب النماذج بالترتيب الفعلي حتى يجد أول نموذج يعمل.
+  </p>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button class="btn btn-primary" id="btn-full-test" onclick="runFullPipelineTest()">
+      ▶ اختبار Pipeline
+    </button>
+    <button class="btn btn-secondary" onclick="runDiagnostics()">
+      🔬 تشخيص مفصّل
+    </button>
+  </div>
+  <div id="pipeline-result" class="result-box" style="margin-top: 12px;"></div>
+  <div id="pipeline-preview" class="content-preview"></div>
+</div>
+
+<!-- ─── صف 4: نتيجة الفحص الشامل ─── -->
+<div class="card" id="diagnostics-card" style="display:none;">
+  <div class="card-title"><span>🔬</span> نتيجة الفحص الشامل</div>
+  <div id="diagnostics-result"></div>
+</div>
+
+
+<script>
+let allModels = [];
+let diagnosticsData = null;
+
+// ── تحميل النماذج والمزوّدين عند فتح الصفحة ──
+async function initPage() {
+  try {
+    const [models, diag] = await Promise.all([
+      fetch('/api/ai/models').then(r => r.json()),
+      fetch('/api/ai/diagnostics').then(r => r.json()),
+    ]);
+    allModels = models;
+    diagnosticsData = diag;
+    renderProviders(diag);
+    renderPriority(diag);
+    populateModelSelect(models, diag);
+  } catch (e) {
+    document.getElementById('providers-list').innerHTML =
+      `<div style="color:#ef4444;font-size:13px;">فشل تحميل البيانات: ${e.message}</div>`;
+  }
+}
+
+function renderProviders(diag) {
+  const providers = [
+    { key: 'openrouter', label: 'OpenRouter (مجاني/مدفوع)', icon: '🌐' },
+    { key: 'anthropic',  label: 'Anthropic (Claude)',       icon: '🟠' },
+    { key: 'openai',     label: 'OpenAI (GPT)',             icon: '🟢' },
+    { key: 'groq',       label: 'Groq (Llama)',             icon: '⚡' },
+    { key: 'google',     label: 'Google (Gemini)',          icon: '🔵' },
+  ];
+
+  const configured = new Set((diag.configured_providers || []).map(p => p.provider));
+  const configuredDetails = {};
+  (diag.configured_providers || []).forEach(p => { configuredDetails[p.provider] = p; });
+
+  let html = '';
+  for (const p of providers) {
+    const has = configured.has(p.key);
+    const detail = configuredDetails[p.key];
+    html += `
+      <div class="status-row">
+        <div class="dot ${has ? 'dot-green' : 'dot-red'}"></div>
+        <div style="flex:1;">
+          <span>${p.icon} ${p.label}</span>
+          ${detail ? `<span style="font-size:11px;color:var(--text-secondary,#777);margin-right:6px;">${detail.key_preview}</span>` : ''}
+        </div>
+        <span class="badge ${has ? 'badge-green' : 'badge-red'}">${has ? 'متاح' : 'غير مضبوط'}</span>
+      </div>`;
+  }
+  document.getElementById('providers-list').innerHTML = html;
+}
+
+function renderPriority(diag) {
+  const priority = diag.priority_order || [];
+  const listEl = document.getElementById('priority-list');
+  const warnEl = document.getElementById('no-models-warning');
+
+  if (priority.length === 0) {
+    listEl.innerHTML = '<div style="color:#ef4444;font-size:13px;">لا توجد نماذج متاحة</div>';
+    warnEl.style.display = 'block';
+    return;
+  }
+  warnEl.style.display = 'none';
+
+  let html = '';
+  priority.forEach((mid, i) => {
+    const m = (diag.available_models || []).find(x => x.id === mid) || {};
+    html += `
+      <div class="priority-item">
+        <span class="priority-num">${i + 1}</span>
+        <div style="flex:1;">
+          <div style="font-weight:600;">${m.name || mid}</div>
+          <div style="font-size:11px;color:var(--text-secondary,#777);">${mid}</div>
+        </div>
+        <span class="badge badge-blue">${m.provider || ''}</span>
+      </div>`;
+  });
+  listEl.innerHTML = html;
+}
+
+function populateModelSelect(models, diag) {
+  const sel = document.getElementById('select-model');
+  const priority = new Set((diag.priority_order || []));
+
+  // المتاحة أولاً ثم الباقي
+  const available = models.filter(m => priority.has(m.id));
+  const others = models.filter(m => !priority.has(m.id));
+
+  let html = '<option value="">-- اختر نموذجاً --</option>';
+
+  if (available.length) {
+    html += '<optgroup label="✅ متاحة (لديها مفتاح)">';
+    available.forEach(m => { html += `<option value="${m.id}">${m.label || m.name}</option>`; });
+    html += '</optgroup>';
+  }
+  if (others.length) {
+    html += '<optgroup label="🔒 تحتاج مفتاح API">';
+    others.forEach(m => { html += `<option value="${m.id}" disabled>${m.label || m.name}</option>`; });
+    html += '</optgroup>';
+  }
+
+  sel.innerHTML = html;
+  // اختر أول نموذج متاح تلقائياً
+  if (available.length) {
+    sel.value = available[0].id;
+    onModelChange();
+  }
+}
+
+function onModelChange() {
+  const mid = document.getElementById('select-model').value;
+  const infoEl = document.getElementById('model-provider-info');
+  if (!mid) { infoEl.textContent = ''; return; }
+  const m = allModels.find(x => x.id === mid);
+  if (m) {
+    const avail = diagnosticsData?.priority_order?.includes(mid);
+    infoEl.innerHTML = `
+      مزوّد: <strong>${m.provider}</strong> &nbsp;|&nbsp;
+      سرعة: <strong>${m.speed}</strong> &nbsp;|&nbsp;
+      جودة: <strong>${m.quality}</strong>
+      <span class="badge ${avail ? 'badge-green' : 'badge-red'}" style="margin-right:6px;">
+        ${avail ? '✅ مفتاح متاح' : '❌ يحتاج مفتاح'}
+      </span>`;
+  }
+}
+
+async function testModel() {
+  const modelId = document.getElementById('select-model').value;
+  if (!modelId) { alert('اختر نموذجاً أولاً'); return; }
+
+  const btn = document.getElementById('btn-test-model');
+  const resultEl = document.getElementById('test-result');
+  const previewEl = document.getElementById('test-content-preview');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> جاري الاختبار...';
+  resultEl.style.display = 'none';
+  previewEl.style.display = 'none';
+
+  const product = {
+    title: document.getElementById('test-title').value || 'سماعات سوني',
+    price_original: parseFloat(document.getElementById('test-price-orig').value) || 1299,
+    price_current:  parseFloat(document.getElementById('test-price-cur').value)  || 849,
+    discount_pct:   parseInt(document.getElementById('test-discount').value)     || 35,
+    rating: 4.7, rating_count: 5823,
+    affiliate_url: 'https://www.amazon.sa/dp/B09XS7JWHH?tag=demo-21',
+  };
+
+  try {
+    const t0 = Date.now();
+    const resp = await fetch('/api/ai/test-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId, product }),
+    });
+    const data = await resp.json();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    if (data.success) {
+      resultEl.className = 'result-box result-success';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML =
+        `✅ نجح التوليد في ${data.elapsed_s || elapsed}ث\n` +
+        `النموذج: ${data.model_id}\n` +
+        `المزوّد: ${data.provider}\n` +
+        `طول المحتوى: ${data.content_length} حرف`;
+
+      previewEl.style.display = 'block';
+      previewEl.textContent = data.full_content || data.preview;
+    } else {
+      resultEl.className = 'result-box result-error';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML =
+        `❌ فشل التوليد\n` +
+        `المرحلة: ${data.stage || 'غير محدد'}\n` +
+        `السبب: ${data.error}\n` +
+        (data.error_type ? `نوع الخطأ: ${data.error_type}\n` : '') +
+        (data.elapsed_s  ? `الوقت المنقضي: ${data.elapsed_s}ث`  : '');
+      previewEl.style.display = 'none';
+    }
+  } catch (e) {
+    resultEl.className = 'result-box result-error';
+    resultEl.style.display = 'block';
+    resultEl.textContent = `خطأ في الاتصال بالخادم: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '▶ تشغيل الاختبار';
+  }
+}
+
+async function runFullPipelineTest() {
+  const btn = document.getElementById('btn-full-test');
+  const resultEl = document.getElementById('pipeline-result');
+  const previewEl = document.getElementById('pipeline-preview');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> جاري الاختبار...';
+  resultEl.style.display = 'none';
+  previewEl.style.display = 'none';
+
+  try {
+    const t0 = Date.now();
+    const resp = await fetch('/api/deals/generate-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deals: [{
+          title: 'سماعات سوني اللاسلكية WH-1000XM5',
+          price_original: 1299, price_current: 849,
+          discount_pct: 35, rating: 4.7, rating_count: 5823,
+          asin: 'TEST-ASIN',
+          affiliate_url: 'https://www.amazon.sa/dp/B09XS7JWHH?tag=demo-21',
+        }]
+      }),
+    });
+    const data = await resp.json();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    const r = (data.results || [])[0] || {};
+    const isRealAI = r.model_used && !r.model_used.startsWith('fallback');
+
+    if (isRealAI && r.content) {
+      resultEl.className = 'result-box result-success';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML =
+        `✅ توليد AI ناجح (${elapsed}ث)\n` +
+        `النموذج المستخدم: ${r.model_used}`;
+
+      previewEl.style.display = 'block';
+      previewEl.textContent = r.content;
+    } else if (r.error) {
+      resultEl.className = 'result-box result-error';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML =
+        `❌ فشل التوليد\nالخطأ: ${r.error}`;
+    } else if (r.content && r.model_used?.startsWith('fallback')) {
+      resultEl.className = 'result-box result-error';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML =
+        `⚠️ يعمل بالقالب الجاهز — AI لم يُولِّد\n` +
+        `السبب: ${r.model_used}\n\n` +
+        `الحل: أضف مفتاح API لأحد المزوّدين من صفحة "مفاتيح API"`;
+      previewEl.style.display = 'block';
+      previewEl.textContent = r.content;
+    } else {
+      resultEl.className = 'result-box result-error';
+      resultEl.style.display = 'block';
+      resultEl.textContent = `استجابة غير متوقعة: ${JSON.stringify(data, null, 2)}`;
+    }
+  } catch (e) {
+    resultEl.className = 'result-box result-error';
+    resultEl.style.display = 'block';
+    resultEl.textContent = `خطأ في الاتصال: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '▶ اختبار Pipeline';
+  }
+}
+
+async function runDiagnostics() {
+  const card = document.getElementById('diagnostics-card');
+  const resultEl = document.getElementById('diagnostics-result');
+
+  card.style.display = 'block';
+  resultEl.innerHTML = '<div style="font-size:13px;color:var(--text-secondary,#666);">⏳ جاري الفحص الشامل...</div>';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    const resp = await fetch('/api/ai/diagnostics');
+    const diag = await resp.json();
+    diagnosticsData = diag;
+
+    renderProviders(diag);
+    renderPriority(diag);
+
+    const tr = diag.test_result || {};
+    const healthy = diag.healthy;
+
+    let html = '';
+
+    // شريط الحالة العامة
+    html += `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;
+           background:${healthy ? '#f0fdf4' : '#fef2f2'};border:1px solid ${healthy ? '#86efac' : '#fca5a5'};
+           margin-bottom: 14px;">
+        <div class="dot ${healthy ? 'dot-green' : 'dot-red'}" style="width:14px;height:14px;"></div>
+        <strong style="font-size:14px;">${healthy ? '✅ نظام AI يعمل بشكل صحيح' : '❌ نظام AI يحتاج إعداداً'}</strong>
+      </div>`;
+
+    // ترتيب النماذج
+    html += `<div style="font-weight:700;font-size:13px;margin-bottom:6px;">📋 ترتيب التجربة (${diag.priority_order?.length || 0} نموذج):</div>`;
+    if (diag.priority_order?.length) {
+      html += '<div style="font-size:12px;color:var(--text-secondary,#666);margin-bottom:10px;">' +
+        diag.priority_order.map((m, i) => `<span class="badge badge-blue" style="margin:2px;">${i+1}. ${m}</span>`).join('') +
+        '</div>';
+    } else {
+      html += '<div style="color:#ef4444;font-size:13px;margin-bottom:10px;">لا توجد نماذج — أضف مفتاح API</div>';
+    }
+
+    // نتيجة الاختبار
+    if (tr.attempted) {
+      html += `<div style="font-weight:700;font-size:13px;margin-bottom:6px;">🧪 نتيجة الاختبار التلقائي (${tr.model || ''}):</div>`;
+      if (tr.success) {
+        html += `
+          <div class="result-box result-success" style="display:block;">
+            ✅ نجح التوليد بـ ${tr.model_used || tr.model}
+            ${tr.preview ? '\n\nمعاينة:\n' + tr.preview : ''}
+          </div>`;
+      } else {
+        html += `
+          <div class="result-box result-error" style="display:block;">
+            ❌ فشل الاختبار\nالسبب: ${tr.error || 'غير معروف'}
+          </div>`;
+      }
+    } else {
+      html += `<div class="result-box result-error" style="display:block;">لم يُجرَ اختبار — لا توجد نماذج مضبوطة</div>`;
+    }
+
+    resultEl.innerHTML = html;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="result-box result-error" style="display:block;">فشل الفحص: ${e.message}</div>`;
+  }
+}
+
+// تشغيل عند تحميل الصفحة
+initPage();
+</script>
+</body>
+</html>
