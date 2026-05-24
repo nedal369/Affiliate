@@ -845,7 +845,6 @@ async def save_settings(request: Request, body: dict = Body(...)):
 
 # ── مفاتيح API ──────────────────────────────────────────────────────────────────
 KNOWN_SERVICES = [
-    "anthropic", "openai", "google", "groq",
     "openrouter",
     "supabase_db_url", "supabase_url", "supabase_anon_key",
     "amazon_access_key", "amazon_secret_key", "amazon_associate_tag",
@@ -894,56 +893,7 @@ async def test_key(service: str):
 
     api_key = get_api_key(service)
 
-    if service == "anthropic":
-        if not api_key:
-            return {"success": False, "message": "المفتاح غير موجود"}
-        try:
-            import anthropic
-            client = anthropic.AsyncAnthropic(api_key=api_key)
-            msg = await client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=10,
-                messages=[{"role": "user", "content": "hi"}],
-            )
-            return {"success": True, "message": "متصل ✓ — Claude جاهز"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    elif service == "openai":
-        if not api_key:
-            return {"success": False, "message": "المفتاح غير موجود"}
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=api_key)
-            await client.models.list()
-            return {"success": True, "message": "متصل ✓ — OpenAI جاهز"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    elif service == "google":
-        if not api_key:
-            return {"success": False, "message": "المفتاح غير موجود"}
-        try:
-            # اختبار توليد فعلي بدلاً من list_models — يكشف مشاكل safety filters
-            from backend.services.ai_service import _call_gemini
-            text = await _call_gemini("gemini-1.5-flash", "أنت مساعد.", "قل: مرحبا")
-            preview = (text or "").strip()[:30]
-            return {"success": True, "message": f"متصل ✓ — Gemini يولّد ({preview})"}
-        except Exception as e:
-            return {"success": False, "message": f"الاتصال نجح لكن التوليد فشل: {e}"}
-
-    elif service == "groq":
-        if not api_key:
-            return {"success": False, "message": "المفتاح غير موجود"}
-        try:
-            from groq import AsyncGroq
-            client = AsyncGroq(api_key=api_key)
-            await client.models.list()
-            return {"success": True, "message": "متصل ✓ — Groq جاهز"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    elif service == "amazon_access_key":
+    if service == "amazon_access_key":
         from backend.services.amazon_service import test_connection
         return await test_connection()
 
@@ -1202,6 +1152,18 @@ async def get_analytics(days: int = Query(30, ge=1, le=365)):
 async def get_ai_models():
     from backend.services.ai_service import get_available_models
     return await get_available_models()
+
+
+class AITestBody(BaseModel):
+    model_id: str
+    product: Optional[dict] = None
+
+
+@app.post("/api/ai/test-generate")
+async def ai_test_generate(body: AITestBody):
+    """اختبار حي لنموذج AI محدد — يُرجع تفاصيل كاملة عن النجاح أو سبب الفشل"""
+    from backend.services.ai_service import test_generate_live
+    return await test_generate_live(body.model_id, body.product)
 
 
 # ── الحسابات المراقبة ─────────────────────────────────────────────────────────────
